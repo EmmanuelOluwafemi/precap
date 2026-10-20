@@ -2,6 +2,10 @@
 name = "precap"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.90"
+description = "Studio-style screen recorder: record screen, camera, mic and system audio, edit with live preview, export a polished video"
+license = "MIT"
+repository = "https://github.com/EmmanuelOluwafemi/precap"
 
 [dependencies]
 anyhow = "1.0.104"
