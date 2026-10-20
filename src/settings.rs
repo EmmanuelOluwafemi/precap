@@ -136,8 +136,7 @@ pub fn format_name(template: &str, target_name: &str, target_kind: &str, mode: &
         rest = &rest[start + end + 1..];
     }
     out.push_str(rest);
-    // Folder names can't hold path separators (or ':' on macOS Finder).
-    Ok(out.replace(['/', '\\', ':'], "-").trim().to_string())
+    Ok(crate::os::file_name(&out).trim().to_string())
 }
 
 #[cfg(test)]
@@ -151,6 +150,8 @@ mod tests {
         let name = format_name(DEFAULT_NAME_TEMPLATE, "Built-in Retina Display", "Display", "Studio", now).unwrap();
         assert_eq!(name, "Built-in Retina Display (Display) 2026-10-20 03.05 PM");
         assert_eq!(format_name("{mode} {date:%d.%m} {unknown}", "x", "y", "Instant", now).unwrap(), "Instant 20.10 {unknown}");
+        // Window titles can hold anything; folder names must not.
+        assert_eq!(format_name("{target_name}", "Inbox | Mail\nfile '/etc/x'", "", "", now).unwrap(), "Inbox - Mail-file '-etc-x'");
     }
 
     #[test]

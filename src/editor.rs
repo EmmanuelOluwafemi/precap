@@ -175,9 +175,7 @@ async fn audio(ed: State<'_, Editor>, config: Value) -> CmdResult<Response> {
     p.cfg = serde_json::from_value(config).map_err(err)?;
     let scene = Scene::new(&p, FPS, 90, None).map_err(err)?;
     // Unique per call: quick edits can overlap two renders.
-    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = std::env::temp_dir().join(format!("precap-preview-{}-{n}.m4a", std::process::id()));
+    let tmp = crate::os::temp_file("m4a").map_err(err)?;
     export::render_audio(&p, &scene, &tmp).map_err(err)?;
     let bytes = std::fs::read(&tmp).map_err(err)?;
     let _ = std::fs::remove_file(&tmp);
@@ -238,7 +236,7 @@ fn default_export_path(ed: State<Editor>) -> String {
     let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_else(|_| ".".into());
     let dir = [if cfg!(target_os = "macos") { "Movies" } else { "Videos" }, ""].iter().map(|d| Path::new(&home).join(d)).find(|d| d.is_dir()).unwrap_or_else(|| PathBuf::from(&home));
     let name = ed.preview.lock().map(|p| p.p.meta.pretty_name.clone()).unwrap_or_default();
-    let name = if name.trim().is_empty() { file_stem(&ed.root) } else { name.replace(['/', '\\', ':'], "-") };
+    let name = if name.trim().is_empty() { file_stem(&ed.root) } else { crate::os::file_name(&name) };
     dir.join(format!("{name}.mp4")).display().to_string()
 }
 

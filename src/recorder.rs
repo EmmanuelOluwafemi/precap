@@ -80,18 +80,10 @@ fn find_window(id: u32) -> CmdResult<record::Window> {
     record::windows().into_iter().find(|w| w.id == id).ok_or_else(|| "That window is no longer open".into())
 }
 
-static TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// A temp file path unique to this call.
-fn tmp_file(ext: &str) -> PathBuf {
-    let n = TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    std::env::temp_dir().join(format!("precap-{}-{n}.{ext}", std::process::id()))
-}
-
 #[tauri::command]
 async fn window_thumbnail(id: u32) -> CmdResult<Response> {
     let w = find_window(id)?;
-    let tmp = tmp_file("jpg");
+    let tmp = crate::os::temp_file("jpg").map_err(err)?;
     record::screenshot(w.display, None, Some(&w), &[], &tmp, Some(480)).map_err(err)?;
     let bytes = std::fs::read(&tmp).map_err(err)?;
     let _ = std::fs::remove_file(&tmp);

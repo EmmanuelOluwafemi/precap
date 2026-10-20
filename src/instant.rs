@@ -113,10 +113,11 @@ pub fn finish(root: &Path, bubble: Option<Bubble>, max_width: usize) -> Result<P
     if let [only] = &parts[..] {
         std::fs::rename(only, &out)?;
     } else {
-        // Each pause made a new segment; join them without re-encoding.
+        // Each pause made a new segment; join them without re-encoding. Names are relative to the
+        // list, so ffmpeg's safe mode can stay on whatever the recording folder is called.
         let list = root.join("content/parts.txt");
-        std::fs::write(&list, parts.iter().map(|p| format!("file '{}'\n", p.display().to_string().replace('\'', "'\\''"))).collect::<String>())?;
-        let args = ["-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", &list.display().to_string(), "-c", "copy", "-movflags", "+faststart", &out.display().to_string()];
+        std::fs::write(&list, (0..parts.len()).map(|k| format!("file 'part-{k}.mp4'\n")).collect::<String>())?;
+        let args = ["-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-i", &list.display().to_string(), "-c", "copy", "-movflags", "+faststart", &out.display().to_string()];
         ffmpeg(&args.map(String::from))?;
         for p in parts.iter().chain([&list]) {
             let _ = std::fs::remove_file(p);
@@ -129,12 +130,14 @@ pub fn finish(root: &Path, bubble: Option<Bubble>, max_width: usize) -> Result<P
 mod tests {
     use super::*;
 
-    /// Two synthetic sources with known offsets become one mp4 with the bubble baked in.
+    /// Two synthetic sources with known offsets become one mp4 with the bubble baked in, and a
+    /// second segment (a pause) is joined on, even in a folder whose name has a quote in it.
     #[test]
     fn bakes_camera_and_mixes_audio() {
-        let root = std::env::temp_dir().join(format!("instant-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("instant test's {}", std::process::id()));
         let seg = root.join("content/segments/segment-0");
         std::fs::create_dir_all(&seg).unwrap();
+        std::fs::create_dir_all(root.join("content/segments/segment-1")).unwrap();
         let make = |args: &str, file: &str| {
             let mut a: Vec<String> = ["-v", "error", "-y"].map(String::from).to_vec();
             a.extend(args.split(' ').map(String::from));
@@ -144,14 +147,18 @@ mod tests {
         make("-f lavfi -i color=c=blue:s=320x240:r=30:d=2 -c:v libx264 -pix_fmt yuv420p", "display.mkv");
         make("-f lavfi -i color=c=red:s=160x120:r=30:d=2 -c:v libx264 -pix_fmt yuv420p", "camera.mkv");
         make("-f lavfi -i sine=f=440:d=2 -c:a aac", "audio-input.mka");
+        make("-f lavfi -i color=c=green:s=320x240:r=30:d=1 -c:v libx264 -pix_fmt yuv420p", "../segment-1/display.mkv");
         let track = |f: &str, t: f64| Track { path: format!("content/segments/segment-0/{f}"), fps: None, start_time: t };
         let meta = Meta {
-            segments: vec![project::Segment { display: track("display.mkv", 0.0), camera: Some(track("camera.mkv", 0.2)), mic: Some(track("audio-input.mka", 0.1)), system_audio: None, cursor: None }],
+            segments: vec![
+                project::Segment { display: track("display.mkv", 0.0), camera: Some(track("camera.mkv", 0.2)), mic: Some(track("audio-input.mka", 0.1)), system_audio: None, cursor: None },
+                project::Segment { display: track("../segment-1/display.mkv", 0.0), camera: None, mic: None, system_audio: None, cursor: None },
+            ],
             ..Default::default()
         };
         project::write(&root.join(project::META), &meta).unwrap();
         let out = finish(&root, Some(Bubble { x: 0.5, y: 0.5, w: 0.25, h: 0.25, round: true, mirror: false }), 1920).unwrap();
-        assert!((probe(&out, "duration").unwrap() - 2.0).abs() < 0.15);
+        assert!((probe(&out, "duration").unwrap() - 3.0).abs() < 0.2);
         // The bubble's centre is red (camera), the corner is blue (screen).
         let frame = Command::new("ffmpeg").args(["-v", "error", "-ss", "1", "-i"]).arg(&out).args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]).output().unwrap().stdout;
         let px = |x: usize, y: usize| &frame[(y * 320 + x) * 3..(y * 320 + x) * 3 + 3];

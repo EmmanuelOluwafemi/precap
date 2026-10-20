@@ -20,12 +20,15 @@ fn run(cmd: &mut Command, input: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// AppleScript / PowerShell string literals.
+/// An AppleScript string literal.
 fn applescript_str(p: &Path) -> String {
     format!("\"{}\"", p.display().to_string().replace('\\', "\\\\").replace('"', "\\\""))
 }
-fn powershell_str(p: &Path) -> String {
-    format!("'{}'", p.display().to_string().replace('\'', "''"))
+
+/// Runs a PowerShell script that reads the path from `$env:PRECAP_PATH`. Never quote a path into
+/// the script: PowerShell also ends '...' strings at curly quotes, which window titles can hold.
+fn powershell(script: &str, path: &Path) -> Result<()> {
+    run(Command::new("powershell").args(["-NoProfile", "-Command", script]).env("PRECAP_PATH", path), None)
 }
 
 pub fn reveal(path: &Path) -> Result<()> {
@@ -41,7 +44,7 @@ pub fn reveal(path: &Path) -> Result<()> {
 pub fn copy_file(path: &Path) -> Result<()> {
     match std::env::consts::OS {
         "macos" => run(Command::new("osascript").args(["-e", &format!("set the clipboard to POSIX file {}", applescript_str(path))]), None),
-        "windows" => run(Command::new("powershell").args(["-NoProfile", "-Command", &format!("Set-Clipboard -Path {}", powershell_str(path))]), None),
+        "windows" => powershell("Set-Clipboard -LiteralPath $env:PRECAP_PATH", path),
         _ => linux_clip("text/uri-list", None, Some(&format!("file://{}\n", path.display()))),
     }
 }
@@ -50,14 +53,7 @@ pub fn copy_file(path: &Path) -> Result<()> {
 pub fn copy_png(path: &Path) -> Result<()> {
     match std::env::consts::OS {
         "macos" => run(Command::new("osascript").args(["-e", &format!("set the clipboard to (read (POSIX file {}) as «class PNGf»)", applescript_str(path))]), None),
-        "windows" => run(
-            Command::new("powershell").args([
-                "-NoProfile",
-                "-Command",
-                &format!("Add-Type -AssemblyName System.Windows.Forms,System.Drawing; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile({}))", powershell_str(path)),
-            ]),
-            None,
-        ),
+        "windows" => powershell("Add-Type -AssemblyName System.Windows.Forms,System.Drawing; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile($env:PRECAP_PATH))", path),
         _ => linux_clip("image/png", Some(path), None),
     }
 }
@@ -89,8 +85,42 @@ pub fn media_dir(pictures: bool) -> PathBuf {
     names.iter().map(|n| home.join(n)).find(|d| d.is_dir()).unwrap_or(home)
 }
 
+/// `name` usable as a file or folder name on every OS: no path separators, no characters Windows
+/// forbids, and no control characters (a newline would also break ffmpeg's concat lists).
+pub fn file_name(name: &str) -> String {
+    name.chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '-' } else { c }).collect()
+}
+
+/// A new empty file in the temp folder, unique to this call. Created exclusively, so a file or
+/// symlink planted under the same name (Linux's /tmp is shared) can't redirect what we write.
+pub fn temp_file(ext: &str) -> Result<PathBuf> {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    loop {
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("precap-{}-{n}.{ext}", std::process::id()));
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(_) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e).context("creating a temp file"),
+        }
+    }
+}
+
 /// `dir/name.ext`, or `dir/name (n).ext` when taken.
 pub fn unique(dir: &Path, name: &str, ext: &str) -> PathBuf {
-    let name = name.replace(['/', '\\', ':'], "-");
+    let name = file_name(name);
     (0..).map(|n| dir.join(if n == 0 { format!("{name}.{ext}") } else { format!("{name} ({n}).{ext}") })).find(|p| !p.exists()).expect("some name is free")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn temp_files_are_new_and_distinct() {
+        let (a, b) = (super::temp_file("png").unwrap(), super::temp_file("png").unwrap());
+        assert_ne!(a, b);
+        assert_eq!(std::fs::metadata(&a).unwrap().len(), 0);
+        for p in [a, b] {
+            std::fs::remove_file(p).unwrap();
+        }
+    }
 }

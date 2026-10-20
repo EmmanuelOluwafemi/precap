@@ -322,7 +322,7 @@ fn raw(request: &Request) -> CmdResult<Vec<u8>> {
 
 #[tauri::command]
 fn ss_copy_png(request: Request) -> CmdResult<()> {
-    let tmp = std::env::temp_dir().join(format!("precap-copy-{}.png", std::process::id()));
+    let tmp = crate::os::temp_file("png").map_err(err)?;
     std::fs::write(&tmp, raw(&request)?).map_err(err)?;
     let res = crate::os::copy_png(&tmp).map_err(err);
     // macOS reads the file synchronously; the other tools have read it by the time they exit or fork.
