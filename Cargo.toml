@@ -1,0 +1,35 @@
+[package]
+name = "precap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+clap = { version = "4.6.7", features = ["derive"] }
+ctrlc = { version = "3.5.2", features = ["termination"] }
+device_query = "4.0.1"
+display-info = "0.5.9"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+
+[build-dependencies]
+tauri-build = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { version = "11", features = ["macos_14_0"] }
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-vision = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_Graphics_Dwm"] }
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Graphics_Imaging", "Media_Ocr", "Storage", "Storage_Streams"] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+xcb = "1"

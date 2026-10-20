@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Precap Controls</title><link rel="stylesheet" href="rec.css">
+<style>
+body{display:flex;align-items:flex-end;justify-content:center;padding:12px}
+#bar{width:100%;height:40px;border-radius:16px;background:var(--g1);border:1px solid var(--g5);box-shadow:0 1px 3px #0000004d;overflow:hidden;display:flex;align-items:stretch;transition:border-color .15s}
+#bar.paused{border-color:var(--a6)}
+#bar button{display:flex;align-items:center;justify-content:center}
+.stop{flex:1;min-width:0;justify-content:flex-start!important;gap:6px;margin:3px 0 3px 3px;padding:0 6px;border-radius:10px;color:var(--r300);font-size:14px;font-variant-numeric:tabular-nums}
+.stop:hover:not(:disabled){background:#ef44441f}
+.stop:disabled{cursor:default}
+.stop svg{width:20px;height:20px}
+.stop.paused{background:var(--a3);color:var(--a11);box-shadow:inset 0 0 0 1px var(--a6)}
+.slot{position:relative;display:inline-block;height:1.5em;overflow:hidden;line-height:1.5em;white-space:nowrap}
+.slot.digit{width:1ch}
+.slot span{display:block}
+.slot span.cd{position:absolute;left:0;top:0}
+.sp{width:14px;height:14px;border:2px solid #ffffff40;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin-right:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.grp{display:flex;align-items:center;gap:2px;padding:0 4px}
+.gb{height:32px;width:28px;border-radius:8px;color:var(--g11)}
+.gb:hover{background:#ffffff14;color:var(--g12)}
+.gb svg{width:20px;height:20px}
+.gb.del:hover{color:var(--r11)}
+.micb{position:relative;height:32px;width:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--g12);flex:none}
+.strip{position:absolute;bottom:4px;left:4px;right:4px;height:2px;border-radius:2px;overflow:hidden;background:var(--g10)}
+.lv{position:absolute;inset:0;background:var(--b9);transition:transform .1s;transform:translateX(-100%)}
+.handle{width:24px;border-left:1px solid var(--g5);color:var(--g10);cursor:grab!important}
+.confirm{flex:1;display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;font-size:13px}
+.confirm span{flex:1;white-space:nowrap}
+.cb{height:26px;padding:0 12px;border-radius:8px;background:var(--g4);font-size:12px}
+.cb:hover{background:var(--g6)}
+.cb.red{background:var(--r9);color:#fff}
+.cb.red:hover{filter:brightness(1.1)}
+.err{color:var(--r11);font-size:12px}
+</style></head>
+<body><div id="bar"></div><script src="rec.js"></script><script src="controls.js"></script></body></html>

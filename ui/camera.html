@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Precap Camera</title><link rel="stylesheet" href="rec.css">
+<style>
+body{display:flex;flex-direction:column;height:100vh}
+#top{height:56px;flex:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+#tools{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--g1);border:1px solid #ffffff33;color:var(--g10);opacity:0;transform:translateY(8px);transition:opacity .15s,transform .15s;pointer-events:none}
+body.hov #tools{opacity:1;transform:none;pointer-events:auto}
+#tools button{padding:8px;border-radius:8px;display:flex}
+#tools button:hover{background:var(--g3);color:var(--g12)}
+#tools button.on{background:var(--g3);color:var(--g12)}
+#tools svg{width:22px;height:22px}
+#pv{position:relative;flex:none;border:1px solid var(--g6);background:#000;overflow:hidden;cursor:move;box-shadow:0 8px 24px #0009}
+#pv canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#pv canvas.m{transform:scaleX(-1)}
+#msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--g11);font-size:12px;text-align:center;padding:12px;pointer-events:none}
+</style></head>
+<body><div id="top"><div id="tools"></div></div><div id="pv"><canvas id="cv"></canvas><div id="msg">Loading camera...</div></div>
+<script src="rec.js"></script><script src="camera.js"></script></body></html>

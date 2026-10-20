@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cap Editor</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<div id="editor">
+  <header data-tauri-drag-region id="hdr"></header>
+  <main>
+    <div id="top">
+      <section class="panel" id="preview">
+        <div id="ptool"></div>
+        <div id="cwrap"><canvas id="cv"></canvas></div>
+        <div id="pbar"></div>
+      </section>
+      <aside class="panel" id="side"><div id="tabs"></div><div id="sbody"></div></aside>
+    </div>
+    <div id="split" title="Resize timeline height"><i></i></div>
+    <section class="panel" id="tl"><div id="tlscroll"><div id="tlinner"></div></div></section>
+  </main>
+</div>
+<div id="export" class="hidden"></div>
+<div id="toast"></div>
+<audio id="aud" preload="auto"></audio>
+<script src="wallpapers/manifest.js"></script>
+<script src="app.js"></script>
+</body></html>

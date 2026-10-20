@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cap Teleprompter</title><link rel="stylesheet" href="rec.css">
+<style>
+#root{position:relative;display:flex;flex-direction:column;height:100vh;width:100vw;overflow:hidden;border-radius:16px;border:1px solid var(--g5);background:#111111e6;box-shadow:0 20px 40px -12px #000a;backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px)}
+header{height:36px;flex:none;display:flex;align-items:center;padding:0 12px}
+header.mac{padding-left:70px}
+#st{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--g10);pointer-events:none}
+#st svg{width:12px;height:12px}
+#x{margin-left:10px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--g10)}
+#x:hover{background:#ffffff14;color:var(--g12)}
+main{position:relative;flex:1;min-height:0;overflow:hidden}
+#sc{position:relative;z-index:1;height:100%;width:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.4) 0%,#000 34%,#000 66%,rgba(0,0,0,.4) 100%);mask-image:linear-gradient(to bottom,rgba(0,0,0,.4) 0%,#000 34%,#000 66%,rgba(0,0,0,.4) 100%)}
+#sc::-webkit-scrollbar{display:none}
+#sc.m{transform:scaleX(-1)}
+.sp{height:calc((100vh - 5rem)/2 - var(--fs)*var(--lh)*.5px)}
+#ta{display:block;width:100%;resize:none;overflow:hidden;background:none;border:0;outline:0;padding:0 32px;text-align:center;font-weight:500;letter-spacing:-.025em;color:var(--g12);font-family:inherit;-webkit-user-select:text;user-select:text;cursor:text}
+#ta::placeholder{color:#606060b3}
+#ta::selection{background:#0090ff40}
+#cue{position:absolute;z-index:2;left:12px;right:12px;top:50%;transform:translateY(-50%);display:flex;justify-content:space-between;color:#3b9effbf;pointer-events:none}
+#cue svg{width:16px;height:16px}
+footer{height:44px;flex:none;display:flex;align-items:center;padding:0 12px 8px;gap:6px}
+.pl{height:32px;border-radius:16px;border:1px solid #eee1;background:#eeeeee0d;display:flex;align-items:center;gap:6px;padding:0 8px;backdrop-filter:blur(24px)}
+#pp{width:32px;padding:0;justify-content:center;background:#eeeeee12;border-radius:50%}
+#pp:hover:not(:disabled){background:#eeeeee1c}
+#pp:disabled{opacity:.3;cursor:not-allowed}
+#pp svg{width:14px;height:14px}
+.pl>svg{color:var(--g10);width:14px;height:14px}
+.pl .v{font-size:10px;color:var(--g10);font-variant-numeric:tabular-nums;text-align:right;width:48px}
+.pl.o .v{width:30px}
+.pl.f{padding:0 2px}.pl.f .v{width:24px;text-align:center}
+.pl input{-webkit-appearance:none;appearance:none;width:48px;height:4px;border-radius:2px;background:#eeeeee1a;outline:0;margin:0}
+.pl input::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--b9);box-shadow:0 1px 2px #0006}
+.pl.o input::-webkit-slider-thumb{background:var(--g11)}
+.ib{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--g10)}
+.ib:hover:not(:disabled){background:#eeeeee12;color:var(--g12)}
+.ib.on{background:#eeeeee14;color:var(--g12)}
+.ib:disabled{opacity:.3}
+#r{margin-left:auto;display:flex;align-items:center;gap:6px}
+#pop{position:absolute;z-index:30;bottom:48px;right:8px;width:192px;border-radius:16px;border:1px solid #eeeeee14;background:#111c;padding:8px;box-shadow:0 20px 40px -12px #000a;backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px)}
+.pr{display:flex;align-items:center;gap:8px;padding:8px;font-size:12px;color:var(--g11);width:100%;text-align:left}
+.pr span{flex:1}
+.pr svg{width:14px;height:14px}
+.tg{width:28px;height:16px;border-radius:8px;background:var(--g6);position:relative;flex:none;transition:background .15s}
+.tg::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s}
+.tg.on{background:var(--b9)}.tg.on::after{transform:translateX(12px)}
+</style></head>
+<body><div id="root"></div><script src="rec.js"></script><script src="teleprompter.js"></script></body></html>

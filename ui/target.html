@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Precap Target</title><link rel="stylesheet" href="rec.css">
+<style>
+#root{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#root.display{background:rgba(24,44,120,.58)}
+#root.camera{background:rgba(0,0,0,.55)}
+#root.window{background:rgba(0,0,0,.7);display:block}
+#root.area{background:transparent;display:block}
+.center{display:flex;flex-direction:column;align-items:center;gap:6px;color:#fff}
+.center .ic svg{width:84px;height:84px;stroke-width:1.1;color:#ffffffd0}
+.center h1{margin:6px 0 0;font-size:34px;font-weight:600;letter-spacing:-.01em;text-shadow:0 2px 8px #0006;text-align:center;max-width:80vw}
+.center p{margin:0 0 22px;font-size:12px;opacity:.9}
+.center h2{margin:0;font-size:24px;font-weight:600}
+.pv{width:240px;height:135px;border-radius:12px;background:#000;overflow:hidden;margin:10px 0 18px;display:flex;align-items:center;justify-content:center;color:#ffffff90;font-size:12px}
+.pv canvas{width:100%;height:100%;display:block}
+/* area */
+#dim{position:absolute;inset:0;background:rgba(0,0,0,.45);cursor:crosshair}
+#sel{position:absolute;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border:1.5px solid #fff;cursor:move;display:none}
+#sel .hd{position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;box-shadow:0 1px 3px #0008}
+#sel .hd::after{content:"";position:absolute;inset:-8px}
+#sel .pillsz{position:absolute;left:50%;top:8px;transform:translateX(-50%);padding:2px 8px;border-radius:10px;background:#1c1c1c;color:#eee;font:500 11px ui-monospace,Menlo,monospace;pointer-events:none;white-space:nowrap}
+#sel.bad{border-color:#e5484d}
+#toolbar{position:absolute;left:50%;top:48px;transform:translateX(-50%);height:48px;border-radius:16px;padding:6px;display:flex;align-items:center;gap:4px}
+#toolbar .ro{min-width:112px;padding:0 12px;font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#toolbar .chips{display:flex;gap:2px;background:#ffffff0f;border-radius:10px;padding:2px}
+#toolbar .chips button{height:28px;padding:0 10px;border-radius:8px;font-size:12px;color:var(--g11)}
+#toolbar .chips button.on{background:#ffffff26;color:#fff}
+#toolbar .ib{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--g11)}
+#toolbar .ib:hover{background:#ffffff1a;color:#fff}
+#toolbar .sep{width:1px;height:20px;background:#ffffff22;margin:0 4px}
+#ahint{position:absolute;left:0;right:0;top:50%;text-align:center;color:#fff;font-size:16px;pointer-events:none;text-shadow:0 1px 4px #0008}
+#err{position:absolute;left:50%;top:50%;transform:translate(-50%,40px);background:#3b1219;border:1px solid #72232d;color:#ff9592;padding:6px 12px;border-radius:9px;font-size:12px;display:none;pointer-events:none}
+#actl{position:absolute;display:none}
+.etoast{position:fixed;left:50%;bottom:60px;transform:translateX(-50%);background:#3b1219;border:1px solid #72232d;color:#ff9592;padding:8px 14px;border-radius:9px;font-size:12px;max-width:80vw;display:none;z-index:60;-webkit-user-select:text;user-select:text}
+</style></head>
+<body><div id="root"></div><script src="rec.js"></script><script src="target.js"></script></body></html>
