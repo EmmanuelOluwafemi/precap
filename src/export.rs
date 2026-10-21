@@ -1,8 +1,9 @@
 //! Export: decode each timeline clip with ffmpeg, composite every frame in Rust,
 //! and pipe raw RGBA into one ffmpeg encoder that also lays down the mic audio.
 
-use crate::project::{self, Config, CursorLog, Meta, ZoomMode};
+use crate::project::{self, BlurMode, Config, CursorLog, Meta, ZoomMode};
 use crate::render::{self, Frame, Image, Rect, Sprite};
+use crate::segment;
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -130,6 +131,8 @@ struct Decoder {
     out: ChildStdout,
     img: Image,
     done: bool,
+    /// Frames read so far; tells callers whether `img` changed.
+    seq: u64,
 }
 
 impl Decoder {
@@ -144,13 +147,13 @@ impl Decoder {
             .spawn()
             .context("failed to start ffmpeg")?;
         let out = child.stdout.take().context("ffmpeg stdout")?;
-        Ok(Self { child, out, img: Image { w, h, px: vec![0; w * h * 4] }, done: false })
+        Ok(Self { child, out, img: Image { w, h, px: vec![0; w * h * 4] }, done: false, seq: 0 })
     }
 
     fn next(&mut self) -> Result<&Image> {
         if !self.done {
             match self.out.read_exact(&mut self.img.px) {
-                Ok(()) => {}
+                Ok(()) => self.seq += 1,
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => self.done = true,
                 Err(e) => return Err(e.into()),
             }
@@ -260,13 +263,15 @@ impl Scene {
             }
             _ => None,
         };
-        Ok(Decoders { display, camera })
+        Ok(Decoders { display, camera, mask: None })
     }
 }
 
 pub struct Decoders {
     display: Decoder,
     camera: Option<Decoder>,
+    /// Person matte of camera frame `seq`; None inside means segmentation failed.
+    mask: Option<(u64, Option<Image>)>,
 }
 
 impl Decoders {
@@ -280,11 +285,20 @@ impl Decoders {
     }
 
     /// Composites the most recently read frames into `out`.
-    pub fn draw(&self, p: &Project, scene: &Scene, s: &FrameState, out: &mut [u8]) {
+    pub fn draw(&mut self, p: &Project, scene: &Scene, s: &FrameState, out: &mut [u8]) {
+        let mode = p.cfg.camera.background_blur.mode;
+        let mut cutout = None;
+        if let (Some(cam), true) = (&self.camera, mode != BlurMode::Off && cfg!(target_os = "macos")) {
+            // Vision runs once per decoded camera frame, however often it is redrawn.
+            if self.mask.as_ref().is_none_or(|m| m.0 != cam.seq) {
+                self.mask = Some((cam.seq, segment::person_mask(&cam.img).map_err(|e| eprintln!("camera background: {e:#}")).ok()));
+            }
+            cutout = self.mask.as_ref().and_then(|m| m.1.as_ref()).map(|m| segment::apply(&cam.img, m, mode));
+        }
         let sprite = s.cursor_id.as_deref().map(|id| p.sprites.get(id).unwrap_or(&p.arrow));
         let frame = Frame {
             screen: &self.display.img,
-            camera: self.camera.as_ref().map(|c| &c.img),
+            camera: cutout.as_ref().or(self.camera.as_ref().map(|c| &c.img)),
             crop: s.crop,
             cursor: if p.cfg.cursor.hide { None } else { s.cursor.zip(sprite) },
         };

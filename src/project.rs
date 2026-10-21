@@ -186,6 +186,22 @@ pub struct Camera {
     /// 100 = circle.
     pub rounding: f64,
     pub rounding_type: String,
+    pub background_blur: BackgroundBlur,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Debug)]
+pub struct BackgroundBlur {
+    pub mode: BlurMode,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum BlurMode {
+    #[default]
+    Off,
+    Light,
+    Heavy,
+    Remove,
 }
 
 impl Default for Camera {
@@ -198,6 +214,7 @@ impl Default for Camera {
             size: 25.0,
             rounding: 100.0,
             rounding_type: "squircle".into(),
+            background_blur: BackgroundBlur::default(),
         }
     }
 }

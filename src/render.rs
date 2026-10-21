@@ -237,7 +237,7 @@ pub fn compose(out: &mut [u8], bg: &Image, l: &Layout, f: &Frame) {
                     let u = (px - cam.x) / cam.w;
                     let u = if l.cam_mirror { 1.0 - u } else { u };
                     let s = sample(img, u, (py - cam.y) / cam.h, 1.0 / cam.w, 1.0 / cam.h);
-                    over(&mut c, [s[0], s[1], s[2]], cover);
+                    over(&mut c, [s[0], s[1], s[2]], cover * s[3]);
                 }
             }
 

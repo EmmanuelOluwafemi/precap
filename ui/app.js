@@ -394,7 +394,10 @@ function camTab(b) {
     g.append(h('button', { class: !manual && pos.x === x && pos.y === y ? 'on' : '', title: `${y} ${x}`, onclick: () => { c.position = { x, y }; c.manualPosition = null; commit(); renderSidebar(); } }, h('i')));
   b.append(g);
   if (manual) b.append(h('div.row.wide', {}, h('span.l', { style: 'color:var(--mut);font-size:12px' }, 'Custom position (dragged on canvas)'), h('button.rowbtn', { onclick: () => { c.manualPosition = null; commit(); renderSidebar(); } }, 'Reset')));
-  b.append(swRow('Hide Camera', () => c.hide, (v) => (c.hide = v)), swRow('Mirror Camera', () => c.mirror, (v) => (c.mirror = v)),
+  b.append(swRow('Hide Camera', () => c.hide, (v) => (c.hide = v)), swRow('Mirror Camera', () => c.mirror, (v) => (c.mirror = v)));
+  if (S.proj.canSegment) b.append(h('div.row.sw', {}, h('span.l', {}, 'Background'),
+    popup([['off', 'Off'], ['light', 'Light Blur'], ['heavy', 'Heavy Blur'], ['remove', 'Remove Background']], c.backgroundBlur?.mode || 'off', (v) => { c.backgroundBlur = { ...c.backgroundBlur, mode: v }; commit(); renderSidebar(); })));
+  b.append(
     slider('Size', () => c.size ?? 30, (v) => (c.size = v), 20, 80, 0.1, pct(1)),
     slider('Corners', () => c.rounding ?? 100, (v) => (c.rounding = v), 0, 100, 0.1, pct(1)),
     h('div.row.sw', {}, h('span.l', {}, 'Corner Style'), cornerPopup(c)));
