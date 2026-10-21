@@ -1,3 +1,4 @@
 /target
 /gen/schemas
 .DS_Store
+/.claude/

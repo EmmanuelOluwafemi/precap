@@ -165,13 +165,7 @@ pub fn finish_onboarding(app: AppHandle, st: tauri::State<recorder::RecState>) -
 
 /// Startup hook: true when the onboarding window takes the place of the recorder window.
 pub fn startup(app: &AppHandle, s: &settings::Settings) -> tauri::Result<bool> {
-    if !cfg!(target_os = "macos") {
-        if !s.onboarding_done {
-            let _ = settings::save(&app.path().app_data_dir()?, &settings::Settings { onboarding_done: true, ..s.clone() });
-        }
-        return Ok(false);
-    }
-    let show = needed(s.onboarding_done, true, &statuses());
+    let show = needed(s.onboarding_done, cfg!(target_os = "macos"), &statuses());
     if show {
         window(app)?;
     }
