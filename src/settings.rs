@@ -55,6 +55,8 @@ pub struct Settings {
     pub main_window_recording_start_behaviour: String,
     /// "openEditor" or "showOverlay".
     pub post_studio_recording_behaviour: String,
+    /// "edit" (open the editor), "copy" (clipboard only) or "copyAndEdit".
+    pub post_screenshot_behaviour: String,
     pub auto_zoom_on_clicks: bool,
     pub default_zoom_amount: f64,
     /// shortcut: Cap defaults to 60, but 60 fps of raw retina frames through a pipe is heavy, so 30.
@@ -76,6 +78,7 @@ impl Default for Settings {
             confirm_before_recording_without_microphone: true,
             main_window_recording_start_behaviour: "close".into(),
             post_studio_recording_behaviour: "openEditor".into(),
+            post_screenshot_behaviour: "edit".into(),
             auto_zoom_on_clicks: false,
             default_zoom_amount: 1.5,
             max_fps: 30,

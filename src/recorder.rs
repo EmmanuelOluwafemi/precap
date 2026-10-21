@@ -242,6 +242,12 @@ fn begin(app: &AppHandle, st: &RecState) -> anyhow::Result<()> {
     let instant = mode == "instant";
     let system_audio = *lock(&st.system_audio) && !t.camera_only;
     let s = current(st);
+    // Unreadable free space (e.g. an odd filesystem) must not block recording.
+    let (need, _) = record::required_free_mb(&s.studio_recording_quality, s.max_fps, camera.is_some());
+    std::fs::create_dir_all(root.parent().unwrap_or(&root))?;
+    if let Ok(free) = crate::os::free_space(root.parent().unwrap_or(&root)).map(|b| b >> 20) {
+        anyhow::ensure!(free >= need, "Insufficient disk space to start recording: {free} MB available, {need} MB required");
+    }
     let exclude = excluded_windows(st);
     let src = Sources { display: t.display, area: t.area, window, camera, mic, system_audio, fps: s.max_fps, camera_only: t.camera_only, show_cursor: instant, exclude, quality: s.studio_recording_quality };
     *lock(&st.rec) = Some(Recorder::start(&root, &name, src, preview)?);
@@ -267,8 +273,54 @@ async fn pause_recording(app: AppHandle, st: State<'_, RecState>) -> CmdResult<(
 
 #[tauri::command]
 async fn resume_recording(app: AppHandle, st: State<'_, RecState>) -> CmdResult<()> {
-    lock(&st.rec).as_mut().ok_or("not recording")?.resume().map_err(err)?;
+    {
+        let mut rec = lock(&st.rec);
+        let rec = rec.as_mut().ok_or("not recording")?;
+        if matches!(rec.free_mb(), Ok((free, floor)) if free < floor) {
+            let msg = "Not enough disk space to resume. Free up space and try again, or press Stop to save.";
+            controls_issue(&app, None, Some(msg));
+            return Err(msg.into());
+        }
+        rec.resume().map_err(err)?;
+    }
+    controls_issue(&app, None, None);
     app.emit("recording-event", "Resumed").map_err(err)
+}
+
+const ISSUE_ROOM: f64 = 84.0;
+
+/// Shows (or with no text, clears) a notice above the controls bar, growing the window upwards to fit.
+fn controls_issue(app: &AppHandle, title: Option<&str>, text: Option<&str>) {
+    let _ = app.emit_to("controls", "recording-issue", text.map(|t| serde_json::json!({ "title": title, "text": t })));
+    let Some(w) = app.get_webview_window("controls") else { return };
+    let (Ok(k), Ok(size), Ok(pos)) = (w.scale_factor(), w.inner_size(), w.outer_position()) else { return };
+    let (size, pos) = (size.to_logical::<f64>(k), pos.to_logical::<f64>(k));
+    let grow = if text.is_some() { ISSUE_ROOM } else { -ISSUE_ROOM };
+    if (size.height > 100.0) == text.is_some() {
+        return;
+    }
+    let _ = w.set_size(tauri::LogicalSize::new(size.width, size.height + grow));
+    let _ = w.set_position(tauri::LogicalPosition::new(pos.x, pos.y - grow));
+}
+
+/// Every 5 s, pauses a running recording whose volume has dropped below its free-space floor.
+fn watch_disk(app: AppHandle) {
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let st = app.state::<RecState>();
+        let mut rec = lock(&st.rec);
+        let Some(r) = rec.as_mut().filter(|r| !r.is_paused()) else { continue };
+        if !matches!(r.free_mb(), Ok((free, floor)) if free < floor) {
+            continue;
+        }
+        if let Err(e) = r.pause() {
+            eprintln!("pausing on low disk space: {e:#}");
+            continue;
+        }
+        drop(rec);
+        let _ = app.emit("recording-event", "Paused");
+        controls_issue(&app, Some("Insufficient disk space"), Some("Your recording is paused. Free up space, then resume, or press Stop to save."));
+    }
 }
 
 #[derive(Serialize)]
@@ -356,6 +408,7 @@ async fn restart_recording(app: AppHandle, st: State<'_, RecState>) -> CmdResult
     if let Some(rec) = lock(&st.rec).take() {
         rec.discard().map_err(err)?;
     }
+    controls_issue(&app, None, None);
     start_recording(app, st).await
 }
 
@@ -399,7 +452,17 @@ async fn take_screenshot(app: AppHandle, target: Target) -> CmdResult<String> {
         let exclude = excluded_windows(&app.state::<RecState>());
         let name = project_name(&app, &target, window.as_ref(), "screenshot");
         let root = crate::screenshot::create(&dir, &name, |png| record::screenshot(target.display, target.area, window.as_ref(), &exclude, png, None)).map_err(err)?;
-        open_screenshot(root.display().to_string())?;
+        // "After a screenshot" setting.
+        let behaviour = current(&app.state::<RecState>()).post_screenshot_behaviour;
+        if behaviour == "copy" || behaviour == "copyAndEdit" {
+            match crate::os::copy_png(&root.join(crate::screenshot::ORIGINAL)) {
+                Ok(()) => drop(app.emit_to("main", "screenshot-copied", ())),
+                Err(e) => drop(app.emit_to("main", "recording-error", format!("Failed to copy screenshot: {e:#}"))),
+            }
+        }
+        if behaviour != "copy" {
+            open_screenshot(root.display().to_string())?;
+        }
         Ok(root)
     };
     // The overlay is gone by now, so the main window shows any error.
@@ -832,6 +895,8 @@ pub fn run() -> anyhow::Result<()> {
             if let Err(e) = register_hotkeys(app.handle(), &s.hotkeys) {
                 eprintln!("shortcuts: {e}");
             }
+            let handle = app.handle().clone();
+            std::thread::spawn(move || watch_disk(handle));
             let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("recorder.html".into()))
                 .title("Precap")
                 .inner_size(330.0, 395.0)

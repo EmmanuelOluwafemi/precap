@@ -48,6 +48,7 @@ body.main{background:var(--g1)}
 .pill{height:24px;min-width:40px;padding:0 10px;border-radius:12px;background:var(--g5);color:var(--g11);font-size:11px;display:flex;align-items:center;justify-content:center;flex:none}
 .pill.on{background:var(--b9);color:#fff}
 .banner{border-radius:10px;background:var(--r3);border:1px solid var(--r6);color:var(--r11);font-size:12px;padding:8px 10px;line-height:1.4;position:relative;padding-right:26px;-webkit-user-select:text;user-select:text}
+.banner.ok{background:var(--g3);border-color:var(--g6);color:var(--g12)}
 .banner button{position:absolute;right:6px;top:6px;color:var(--r11)}
 .view{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
 .vtop{display:flex;gap:10px;align-items:center;margin-top:10px}

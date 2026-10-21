@@ -38,6 +38,7 @@ function general() {
     row('confirmBeforeRecordingWithoutMicrophone', 'Confirm before recording without a microphone', 'Require confirmation when no microphone is selected or the selected microphone is unavailable.', tog('confirmBeforeRecordingWithoutMicrophone')),
     row('mainWindowRecordingStartBehaviour', 'Main window when recording starts', 'What happens to the main window once a recording begins.', sel('mainWindowRecordingStartBehaviour', [['close', 'Close'], ['minimise', 'Minimise']])),
     row('postStudioRecordingBehaviour', 'After a Studio recording', 'What happens once you stop a Studio recording.', sel('postStudioRecordingBehaviour', [['openEditor', 'Open editor'], ['showOverlay', 'Show in overlay']])),
+    row('postScreenshotBehaviour', 'After a screenshot', 'For every screenshot, from a shortcut or from Precap.', sel('postScreenshotBehaviour', [['edit', 'Edit — Annotate first'], ['copy', 'Copy — Paste anywhere'], ['copyAndEdit', 'Copy and edit — Both at once']])),
     row('autoZoomOnClicks', 'Auto zoom on clicks', 'Automatically add zoom segments around mouse clicks in Studio recordings.', tog('autoZoomOnClicks')),
     row('defaultZoomAmount', 'Default zoom amount', 'Zoom level for newly created and auto-generated zoom segments.', h('div.zr', {}, sl, rd)),
     row('maxFps', 'Max capture framerate', S.maxFps > 60 ? 'Maximum framerate for screen capture. Higher values may cause drops or increased CPU usage on some systems.' : 'Maximum framerate for screen capture.',

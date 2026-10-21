@@ -1,7 +1,7 @@
 'use strict';
 // Recording controls bar: countdown -> starting -> recording/paused. Delete/restart confirm inline.
 const CD = parseInt(new URLSearchParams(location.search).get('countdown') || '0', 10) || 0;
-const C = { mic: null, lv: 0, confirm: null, state: 'countdown', n: CD, acc: 0, t0: 0, cancelled: false, err: '' };
+const C = { mic: null, lv: 0, confirm: null, state: 'countdown', n: CD, acc: 0, t0: 0, cancelled: false, err: '', issue: null };
 const bar = $('#bar');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const elapsed = () => C.acc + (C.state === 'recording' ? performance.now() - C.t0 : 0);
@@ -11,6 +11,7 @@ const setLv = () => { if (lvEl) lvEl.style.transform = `translateX(-${(1 - C.lv)
 
 function gb(icon, title, fn, cls = '') { return h('button.gb', { class: cls, title, html: ico(icon), onclick: fn }); }
 function render() {
+  $('#issue').replaceChildren(...(C.issue ? [C.issue.title ? h('b', {}, C.issue.title) : null, C.issue.text].filter(Boolean) : []));
   bar.innerHTML = ''; timeEl = digitEl = lvEl = null;
   bar.classList.toggle('paused', C.state === 'paused');
   const s = C.state;
@@ -54,7 +55,7 @@ function rollTo(n) {
 }
 
 async function begin(restart) {
-  C.confirm = null; C.state = 'starting'; C.err = ''; render();
+  C.confirm = null; C.state = 'starting'; C.err = ''; C.issue = null; render();
   try { await invoke(restart ? 'restart_recording' : 'start_recording'); }
   catch (e) { log('start: ' + e); return; } // backend closes this window and reports to main
   if (C.cancelled) return;
@@ -97,6 +98,10 @@ setInterval(() => { if (timeEl) timeEl.textContent = fmt(elapsed()); }, 100);
   } catch (e) { log('mic: ' + e); }
 })();
 TAURI.event.listen('audio-input-level-change', (e) => { const p = e.payload; C.lv = p == null ? 0 : Math.min(1, Math.max(0, (p + 60) / 60)); setLv(); });
+
+// Low disk space: the backend pauses the recording and sends the notice (null clears it).
+TAURI.event.listen('recording-event', (e) => { if (e.payload === 'Paused' && C.state === 'recording') { C.acc = elapsed(); C.state = 'paused'; render(); } });
+curWin.listen('recording-issue', (e) => { C.issue = e.payload; render(); });
 
 // Global shortcuts forwarded by Rust act like the buttons (restart skips the inline confirm); ignored outside recording/paused.
 curWin.listen('hotkey-action', (e) => {

@@ -112,8 +112,36 @@ pub fn unique(dir: &Path, name: &str, ext: &str) -> PathBuf {
     (0..).map(|n| dir.join(if n == 0 { format!("{name}.{ext}") } else { format!("{name} ({n}).{ext}") })).find(|p| !p.exists()).expect("some name is free")
 }
 
+/// Bytes free to this user on the volume holding `path`.
+pub fn free_space(path: &Path) -> std::io::Result<u64> {
+    #[cfg(unix)]
+    {
+        let c = std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(path.as_os_str())).map_err(std::io::Error::other)?;
+        let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(c.as_ptr(), &mut s) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(s.f_bavail as u64 * s.f_frsize as u64)
+    }
+    #[cfg(windows)]
+    {
+        let wide: Vec<u16> = std::os::windows::ffi::OsStrExt::encode_wide(path.as_os_str()).chain(Some(0)).collect();
+        let mut free = 0u64;
+        if unsafe { windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, std::ptr::null_mut(), std::ptr::null_mut()) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(free)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn free_space_of_temp_dir() {
+        assert!(super::free_space(&std::env::temp_dir()).unwrap() > 0);
+        assert!(super::free_space(std::path::Path::new("/no/such/dir/precap")).is_err());
+    }
+
     #[test]
     fn temp_files_are_new_and_distinct() {
         let (a, b) = (super::temp_file("png").unwrap(), super::temp_file("png").unwrap());

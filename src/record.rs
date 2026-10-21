@@ -396,13 +396,25 @@ impl Drop for MicMeter {
     }
 }
 
+/// (video bitrate, x264 crf, Mbit/s) of a studio quality preset.
+fn quality_rates(quality: &str) -> (&'static str, &'static str, f64) {
+    match quality {
+        "compatibility" => ("6M", "23", 6.0),
+        "ultra" => ("25M", "14", 25.0),
+        _ => ("12M", "18", 12.0),
+    }
+}
+
+/// Free disk MB needed (to start, floor while recording): 5 min / 1 min of video at the preset's
+/// bitrate (x1.5 above 30 fps, x2 with a camera track), never below 500 / 200 MB. Tune the policy here.
+pub fn required_free_mb(quality: &str, fps: u32, camera: bool) -> (u64, u64) {
+    let per_min = quality_rates(quality).2 * 7.5 * if fps > 30 { 1.5 } else { 1.0 } * if camera { 2.0 } else { 1.0 };
+    ((per_min * 5.0).ceil().max(500.0) as u64, per_min.ceil().max(200.0) as u64)
+}
+
 fn codec_args(kind: Kind, quality: &str) -> Vec<&'static str> {
     // Cap's studio presets: Balanced, Smaller files, Maximum detail.
-    let (bitrate, crf) = match quality {
-        "compatibility" => ("6M", "23"),
-        "ultra" => ("25M", "14"),
-        _ => ("12M", "18"),
-    };
+    let (bitrate, crf, _) = quality_rates(quality);
     match kind {
         // Hardware H.264 on macOS (Cap uses VideoToolbox too); fast x264 elsewhere.
         Kind::Screen | Kind::Camera if OS == "macos" => vec!["-c:v", "h264_videotoolbox", "-b:v", bitrate, "-pix_fmt", "yuv420p"],
@@ -788,6 +800,12 @@ impl Recorder {
         Ok(Self { root: root.to_path_buf(), src, meta, current, preview })
     }
 
+    /// (free MB on the recording's volume, the floor below which it should pause).
+    pub fn free_mb(&self) -> Result<(u64, u64)> {
+        let floor = required_free_mb(&self.src.quality, self.src.fps, self.src.camera.is_some()).1;
+        Ok((crate::os::free_space(&self.root)? >> 20, floor))
+    }
+
     pub fn is_paused(&self) -> bool {
         self.current.is_none()
     }
@@ -850,6 +868,14 @@ pub fn record(root: &Path, name: &str, src: Sources) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_requirements_follow_bitrate() {
+        assert_eq!(required_free_mb("balanced", 30, false), (500, 200));
+        assert_eq!(required_free_mb("compatibility", 30, true), (500, 200));
+        assert_eq!(required_free_mb("ultra", 30, false), (938, 200));
+        assert_eq!(required_free_mb("ultra", 60, true), (2813, 563));
+    }
 
     #[test]
     fn mjpeg_stream_yields_whole_jpegs() {

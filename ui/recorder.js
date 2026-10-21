@@ -1,6 +1,6 @@
 'use strict';
 // Main recorder panel: target tiles, device rows, and in-window picker / recordings views.
-const R = { view: 'home', dev: { screens: [], cameras: [], mics: [] }, sel: [null, null, false], error: '', q: '', recs: null, shots: null, wins: null, tile: null, cameraOnlyNext: false, mode: getMode(), level: null, mtr: null, th: new Map() };
+const R = { view: 'home', dev: { screens: [], cameras: [], mics: [] }, sel: [null, null, false], error: '', notice: '', q: '', recs: null, shots: null, wins: null, tile: null, cameraOnlyNext: false, mode: getMode(), level: null, mtr: null, th: new Map() };
 const getDisplay = () => Math.min(parseInt(localStorage.getItem('precapDisplay') || '0', 10) || 0, Math.max(0, R.dev.screens.length - 1));
 const setDisplay = (i) => localStorage.setItem('precapDisplay', String(i));
 
@@ -27,6 +27,7 @@ async function go(v) {
   if (['display', 'camera', 'mic'].includes(v)) await refresh();
   render();
 }
+function notice() { return R.notice ? h('div.banner.ok', {}, R.notice) : null; }
 function banner() {
   return R.error ? h('div.banner', {}, R.error, h('button', { title: 'Dismiss', html: ico('x', 14), onclick: () => { R.error = ''; render(); } })) : null;
 }
@@ -92,7 +93,7 @@ function home(b) {
       devRow('cam', camName(), 'No Camera', R.sel[0], () => go('camera'), () => pickCamera(null)),
       devRow('mic', micName(), 'No Microphone', R.sel[1], () => go('mic'), () => pickMic(null), true),
       devRow('monitor', R.sel[2] ? 'Record System Audio' : null, 'No System Audio', R.sel[2], toggleSys, toggleSys))]),
-    ...(R.error ? [banner()] : []));
+    ...(R.error ? [banner()] : []), ...(R.notice ? [notice()] : []));
 }
 function devRow(icon, name, none, on, open, off, meter) {
   const pill = h('span.pill', { class: on ? 'on' : '' }, on ? 'On' : 'Off');
@@ -187,6 +188,7 @@ function render() {
   await refresh(); render();
   TAURI.event.listen('audio-input-level-change', (e) => setLevel(e.payload));
   curWin.listen('recording-error', (e) => { R.error = String(e.payload); R.view = 'home'; R.tile = null; refresh().then(render); });
+  curWin.listen('screenshot-copied', () => { R.notice = 'Screenshot copied to clipboard'; render(); clearTimeout(R.nt); R.nt = setTimeout(() => { R.notice = ''; render(); }, 2500); });
   curWin.listen('hotkey-action', (e) => {
     const a = e.payload, k = { openRecordingPickerDisplay: 'display', openRecordingPickerWindow: 'window', openRecordingPickerArea: 'area' }[a];
     if (a === 'cycleRecordingMode') { const ms = Object.keys(MODES); R.mode = ms[(ms.indexOf(getMode()) + 1) % ms.length]; pickMode(R.mode); }
