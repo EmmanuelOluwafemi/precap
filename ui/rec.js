@@ -48,6 +48,7 @@ const ICONS = {
   reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   fill: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+  blur: '<circle cx="12" cy="9" r="3"/><path d="M7 20c.8-3 2.8-4.5 5-4.5s4.2 1.5 5 4.5M3 6h.01M3 12h.01M3 18h.01M21 6h.01M21 12h.01M21 18h.01"/>',
   mirror: '<path d="M12 3v18M8 7 3 12l5 5zM16 7l5 5-5 5z"/>',
   shape: '<circle cx="12" cy="12" r="8"/>',
   size: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',

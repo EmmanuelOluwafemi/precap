@@ -44,7 +44,7 @@ live preview, then export a video that looks produced, not just captured.
 **Recording**
 
 - Record a whole display, one window or a region you drag out
-- Camera bubble: round or rounded square, mirrored, placed anywhere on screen
+- Camera bubble: round or rounded square, mirrored, placed anywhere on screen, with live background blur or removal on macOS that Studio projects keep
 - Microphone with a live level meter, and system audio
 - A countdown, plus a warning before you record without a microphone
 - A teleprompter that stays out of the recording (macOS)
@@ -282,7 +282,7 @@ them when that's fine.
 ## Not included yet
 
 - Accounts, cloud upload and share links (Instant is local only)
-- Camera background blur on Windows and Linux
+- Camera background blur on Windows and Linux, and in Instant recordings
 - Captions and transcription
 - Keyboard overlay
 - Text, mask and scene tracks in the video editor

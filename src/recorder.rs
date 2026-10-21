@@ -2,6 +2,7 @@
 //! camera bubble, the recording controls bar, the teleprompter and the Instant result card.
 //! Front end pages live in ui/ (recorder, target, controls, camera, teleprompter, overlay).
 
+use crate::project::BlurMode;
 use crate::record::{self, Area, CameraFrame, CameraPreview, MicMeter, Recorder, Sources};
 use crate::settings::{self, Hotkey, Settings};
 use serde::{Deserialize, Serialize};
@@ -27,16 +28,18 @@ struct Target {
     camera_only: bool,
 }
 
-/// The camera bubble's look, reported by its page (baked into Instant recordings).
+/// The camera bubble's look, reported by its page (shape and mirror are baked into Instant
+/// recordings; the background blur carries into new Studio projects).
 #[derive(Deserialize, Clone)]
 struct CameraStyle {
     shape: String,
     mirror: bool,
+    blur: BlurMode,
 }
 
 impl Default for CameraStyle {
     fn default() -> Self {
-        Self { shape: "round".into(), mirror: false }
+        Self { shape: "round".into(), mirror: false, blur: BlurMode::Off }
     }
 }
 
@@ -49,6 +52,8 @@ pub struct RecState {
     mic: Mutex<Option<String>>,
     system_audio: Mutex<bool>,
     camera_style: Mutex<CameraStyle>,
+    /// Last camera JPEG and mode the bubble's blur ran on, and the result.
+    blurred: Mutex<(Vec<u8>, BlurMode, Vec<u8>)>,
     target: Mutex<Option<Target>>,
     /// "studio" or "instant" for the recording being set up or running.
     mode: Mutex<String>,
@@ -131,8 +136,8 @@ fn set_system_audio(st: State<RecState>, on: bool) {
 }
 
 #[tauri::command]
-fn camera_style(st: State<RecState>, shape: String, mirror: bool) {
-    *lock(&st.camera_style) = CameraStyle { shape, mirror };
+fn camera_style(st: State<RecState>, shape: String, mirror: bool, blur: BlurMode) {
+    *lock(&st.camera_style) = CameraStyle { shape, mirror, blur };
 }
 
 /// Current picks, so every window (main, overlay) shows the same camera/mic/system audio.
@@ -141,10 +146,38 @@ fn selection(st: State<RecState>) -> (Option<String>, Option<String>, bool) {
     (lock(&st.camera).clone(), lock(&st.mic).clone(), *lock(&st.system_audio))
 }
 
-/// Newest camera JPEG (empty until the first frame arrives).
+/// Newest camera JPEG (empty until the first frame arrives), with the bubble's background
+/// blur applied; a PNG with transparency when the background is removed.
 #[tauri::command]
-fn camera_frame(st: State<RecState>) -> Response {
-    Response::new(lock(&st.frame).clone())
+async fn camera_frame(st: State<'_, RecState>) -> CmdResult<Response> {
+    let (jpeg, mode) = (lock(&st.frame).clone(), lock(&st.camera_style).blur);
+    if mode == BlurMode::Off || jpeg.is_empty() {
+        return Ok(Response::new(jpeg));
+    }
+    let mut last = lock(&st.blurred);
+    if last.0 != jpeg || last.1 != mode {
+        let out = blur_frame(&jpeg, mode).unwrap_or_else(|e| {
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| eprintln!("camera background blur: {e:#}"));
+            jpeg.clone()
+        });
+        *last = (jpeg, mode, out);
+    }
+    Ok(Response::new(last.2.clone()))
+}
+
+fn blur_frame(jpeg: &[u8], mode: BlurMode) -> anyhow::Result<Vec<u8>> {
+    let rgba = image::load_from_memory(jpeg)?.to_rgba8();
+    let img = crate::render::Image { w: rgba.width() as usize, h: rgba.height() as usize, px: rgba.into_raw() };
+    let out = crate::segment::apply(&img, &crate::segment::person_mask(&img)?, mode);
+    let out = image::RgbaImage::from_raw(out.w as u32, out.h as u32, out.px).ok_or_else(|| anyhow::anyhow!("bad frame size"))?;
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if mode == BlurMode::Remove {
+        out.write_to(&mut buf, image::ImageFormat::Png)?;
+    } else {
+        image::DynamicImage::ImageRgba8(out).to_rgb8().write_to(&mut buf, image::ImageFormat::Jpeg)?;
+    }
+    Ok(buf.into_inner())
 }
 
 /// Opens Cap-style target selection: a full-screen overlay on `display`
@@ -375,10 +408,9 @@ async fn stop_recording(app: AppHandle, st: State<'_, RecState>) -> CmdResult<St
         root
     } else {
         let s = current(&st);
-        if s.auto_zoom_on_clicks {
-            if let Err(e) = auto_zoom(&root, s.default_zoom_amount) {
-                eprintln!("auto zoom: {e:#}");
-            }
+        let zoom = s.auto_zoom_on_clicks.then_some(s.default_zoom_amount);
+        if let Err(e) = prepare_project(&root, zoom, lock(&st.camera_style).blur) {
+            eprintln!("preparing the new project: {e:#}");
         }
         // Cap's "After a Studio recording" setting.
         if s.post_studio_recording_behaviour == "showOverlay" {
@@ -392,13 +424,20 @@ async fn stop_recording(app: AppHandle, st: State<'_, RecState>) -> CmdResult<St
     Ok(result.display().to_string())
 }
 
-/// Cap's "Auto zoom on clicks": zoom segments around the recorded clicks, written into the new project.
-fn auto_zoom(root: &Path, amount: f64) -> anyhow::Result<()> {
+/// Written into a new Studio project: Cap's "Auto zoom on clicks" (zoom segments around the
+/// recorded clicks) and the camera bubble's background blur.
+fn prepare_project(root: &Path, zoom: Option<f64>, blur: BlurMode) -> anyhow::Result<()> {
+    if zoom.is_none() && blur == BlurMode::Off {
+        return Ok(());
+    }
     let p = crate::export::Project::load(root)?;
-    let duration = p.cfg.timeline.segments.iter().map(|c| (c.end - c.start) / c.timescale).sum();
-    let clicks = crate::autozoom::click_times(&p.meta, &p.cfg, &p.cursors);
-    let mut cfg = p.cfg;
-    cfg.timeline.zoom_segments = crate::autozoom::zoom_segments_from_clicks(&clicks, duration, amount);
+    let mut cfg = p.cfg.clone();
+    if let Some(amount) = zoom {
+        let duration = p.cfg.timeline.segments.iter().map(|c| (c.end - c.start) / c.timescale).sum();
+        let clicks = crate::autozoom::click_times(&p.meta, &p.cfg, &p.cursors);
+        cfg.timeline.zoom_segments = crate::autozoom::zoom_segments_from_clicks(&clicks, duration, amount);
+    }
+    cfg.camera.background_blur.mode = blur;
     crate::project::write(&root.join(crate::project::CONFIG), &cfg)
 }
 
@@ -979,5 +1018,42 @@ mod tests {
         assert_eq!(shortcut_of(&hk("F5", false, false)), Some(Shortcut::new(None, Code::F5)), "F-keys may stand alone");
         assert_eq!(shortcut_of(&hk("KeyR", false, false)), None, "a bare letter would hijack typing");
         assert_eq!(shortcut_of(&hk("NotAKey", true, false)), None);
+    }
+
+    #[test]
+    fn new_project_takes_the_bubble_blur() {
+        use crate::project::{self, Meta, Segment, Track};
+        let root = std::env::temp_dir().join(format!("prepare project {}", std::process::id()));
+        let seg = root.join("content/segments/segment-0");
+        std::fs::create_dir_all(&seg).unwrap();
+        let ff = std::process::Command::new("ffmpeg").args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=160x120:r=30:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p"]).arg(seg.join("display.mkv")).status().unwrap();
+        assert!(ff.success());
+        let display = Track { path: "content/segments/segment-0/display.mkv".into(), fps: None, start_time: 0.0 };
+        project::write(&root.join(project::META), &Meta { segments: vec![Segment { display, camera: None, mic: None, system_audio: None, cursor: None }], ..Default::default() }).unwrap();
+        prepare_project(&root, None, BlurMode::Off).unwrap();
+        assert!(!root.join(project::CONFIG).exists(), "nothing to carry, nothing written");
+        prepare_project(&root, None, BlurMode::Heavy).unwrap();
+        let cfg: project::Config = project::read(&root.join(project::CONFIG)).unwrap();
+        assert_eq!(cfg.camera.background_blur.mode, BlurMode::Heavy);
+        assert_eq!(cfg.timeline.segments.len(), 1, "the full timeline is kept");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "runs Apple Vision"]
+    fn bubble_frames_blur_or_cut_out() {
+        let src = image::open(concat!(env!("CARGO_MANIFEST_DIR"), "/src/testdata/ocr.png")).unwrap().resize_exact(360, 360, image::imageops::FilterType::Triangle).to_rgb8();
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        src.write_to(&mut jpeg, image::ImageFormat::Jpeg).unwrap();
+        let (blurred, cut) = (blur_frame(jpeg.get_ref(), BlurMode::Heavy).unwrap(), blur_frame(jpeg.get_ref(), BlurMode::Remove).unwrap());
+        assert_eq!(&blurred[..2], &[0xff, 0xd8], "blur stays a JPEG");
+        assert_eq!(&cut[..4], b"\x89PNG", "a cut-out needs alpha");
+        let png = image::load_from_memory(&cut).unwrap();
+        assert_eq!((png.width(), png.height(), png.color().has_alpha()), (360, 360, true));
+        // The bubble polls every 40 ms and the camera sends 20 fps.
+        let t = std::time::Instant::now();
+        (0..10).for_each(|_| drop(blur_frame(jpeg.get_ref(), BlurMode::Heavy).unwrap()));
+        eprintln!("bubble blur: {:?} per frame", t.elapsed() / 10);
     }
 }
