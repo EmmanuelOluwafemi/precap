@@ -444,7 +444,9 @@ fn recordings(app: AppHandle) -> CmdResult<Vec<RecordingItem>> {
 fn incomplete_dir(app: &AppHandle, path: &str) -> CmdResult<PathBuf> {
     let p = PathBuf::from(path);
     let active = lock(&app.state::<RecState>().rec).as_ref().map(|r| r.root().to_path_buf());
-    if active.as_deref() == Some(&p) || !crate::project::incomplete(&p) {
+    // Discard deletes the folder, so it must be one of ours, not any path a page sends.
+    let ours = p.parent() == Some(data_dir(app, "recordings").map_err(err)?.as_path());
+    if !ours || active.as_deref() == Some(&p) || !crate::project::incomplete(&p) {
         return Err("Not an incomplete recording".into());
     }
     Ok(p)

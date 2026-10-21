@@ -517,8 +517,9 @@ fn spawn(dir: &Path, file: &'static str, kind: Kind, input: Vec<String>, crop: O
         cmd.args(["-vf", &crop]);
     }
     // Matroska stays playable if we crash mid-recording (an mp4/m4a without its moov would not);
-    // flushing every packet means a hard kill loses at most the last moment.
-    cmd.args(codec_args(kind, quality)).args(["-flush_packets", "1"]).arg(dir.join(file));
+    // flushing every packet and closing a cluster every second means a hard kill loses at most
+    // about a second (the default 5 s clusters lost the first 5 s of a short take entirely).
+    cmd.args(codec_args(kind, quality)).args(["-flush_packets", "1", "-cluster_time_limit", "1000"]).arg(dir.join(file));
     if preview.is_some() {
         cmd.args(PREVIEW_OUT);
     }
@@ -776,8 +777,25 @@ fn segment_of(dir: &Path, rel: &str, fps: u32, has: &dyn Fn(&str) -> bool) -> Re
     })
 }
 
+/// A track cut off by a crash has packets but no duration (Matroska writes it last), which the
+/// editor and export need. Remux it with `-c copy` and swap the copy in only once it probes.
+fn heal(path: &Path) -> Result<()> {
+    probe(path, "start_time")?;
+    if probe(path, "duration").is_ok() {
+        return Ok(());
+    }
+    let tmp = path.with_extension("healed");
+    let ok = Command::new("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(path).args(["-c", "copy", "-f", "matroska"]).arg(&tmp).status()?.success();
+    if !ok || probe(&tmp, "duration").is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        bail!("could not repair {}", path.display());
+    }
+    Ok(std::fs::rename(&tmp, path)?)
+}
+
 /// Rebuilds the project of a recording that never finished from the Matroska tracks it left.
-/// Nothing is written until every segment is probed, so a failure leaves the folder as it was.
+/// Crashed tracks are repaired first (see `heal`); the project files are written only after
+/// every segment is probed, so a failure leaves the recording as it was.
 pub fn recover(root: &Path) -> Result<()> {
     let segs = root.join("content/segments");
     let mut dirs: Vec<(usize, PathBuf)> = std::fs::read_dir(&segs)
@@ -790,7 +808,7 @@ pub fn recover(root: &Path) -> Result<()> {
     let mut why = String::from("no segments found");
     for (i, dir) in dirs {
         // A track cut off before its first packet cannot be probed; drop it rather than the segment.
-        let has = |f: &str| probe(&dir.join(f), "start_time").is_ok();
+        let has = |f: &str| heal(&dir.join(f)).is_ok();
         // The cursor log is only written when a segment finishes; a crashed one has none.
         match segment_of(&dir, &format!("content/segments/segment-{i}"), 30, &has) {
             Ok(mut seg) => {
@@ -1034,6 +1052,16 @@ mod tests {
         assert!(Command::new("ffmpeg").args(a).status().unwrap().success());
     }
 
+    /// A track cut off by a hard kill, as a crash leaves it: packets but no duration.
+    fn crashed(path: &Path) {
+        let args = "-v error -y -re -f lavfi -i testsrc=s=320x240:r=30 -c:v libx264 -pix_fmt yuv420p -cluster_time_limit 500 -flush_packets 1";
+        let mut c = Command::new("ffmpeg").args(args.split(' ')).arg(path).stdin(Stdio::null()).spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        c.kill().unwrap();
+        c.wait().unwrap();
+        assert!(probe(path, "start_time").is_ok() && probe(path, "duration").is_err());
+    }
+
     /// A folder with only segment tracks (no meta/config/cursor log), as a crash leaves it.
     fn interrupted(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("precap {name} {}", std::process::id()));
@@ -1051,7 +1079,7 @@ mod tests {
         assert!(project::incomplete(&root));
         clip(&seg(0, "display.mkv"), "-f lavfi -i testsrc=s=320x240:r=30:d=2 -c:v libx264 -pix_fmt yuv420p");
         clip(&seg(0, "audio-input.mka"), "-f lavfi -i sine=f=440:d=2 -c:a aac");
-        clip(&seg(1, "display.mkv"), "-f lavfi -i testsrc=s=320x240:r=30:d=1 -c:v libx264 -pix_fmt yuv420p");
+        crashed(&seg(1, "display.mkv"));
         std::fs::write(seg(1, "camera.mkv"), b"cut off before any packet").unwrap();
         recover(&root).unwrap();
         assert!(!project::incomplete(&root));
@@ -1061,7 +1089,8 @@ mod tests {
         assert!(meta.segments[1].camera.is_none(), "unreadable optional track is dropped");
         let cfg: project::Config = project::read(&root.join(project::CONFIG)).unwrap();
         let d: Vec<f64> = cfg.timeline.segments.iter().map(|c| c.end).collect();
-        assert!((d[0] - 2.0).abs() < 0.2 && (d[1] - 1.0).abs() < 0.2, "{d:?}");
+        assert!((d[0] - 2.0).abs() < 0.2 && d[1] > 0.5, "{d:?}");
+        assert!(probe(&seg(1, "display.mkv"), "duration").is_ok(), "crashed track repaired in place");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
