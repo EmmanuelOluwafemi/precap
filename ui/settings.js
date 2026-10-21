@@ -42,7 +42,8 @@ function general() {
     row('defaultZoomAmount', 'Default zoom amount', 'Zoom level for newly created and auto-generated zoom segments.', h('div.zr', {}, sl, rd)),
     row('maxFps', 'Max capture framerate', S.maxFps > 60 ? 'Maximum framerate for screen capture. Higher values may cause drops or increased CPU usage on some systems.' : 'Maximum framerate for screen capture.',
       sel('maxFps', [24, 25, 30, 60, 120].map((f) => [f, f + ' FPS' + (f === 30 ? ' (Recommended)' : '')]))));
-  return [sect('Recording', 'Behaviour while you record and after you stop.', rec), storage(), nameSec(), exclSec()];
+  const perms = V.os === 'macos' ? [sect('Permissions', 'Screen recording, microphone, camera and accessibility access.', h('div.sc-card.pad', {}, h('div.fr', {}, btn('Permissions', () => invoke('open_onboarding'), 'pri'))))] : [];
+  return [sect('Recording', 'Behaviour while you record and after you stop.', rec), storage(), nameSec(), exclSec(), ...perms];
 }
 
 function storage() {

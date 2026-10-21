@@ -4,6 +4,7 @@ mod export;
 mod instant;
 mod ocr;
 mod os;
+mod permissions;
 mod project;
 mod record;
 mod recorder;

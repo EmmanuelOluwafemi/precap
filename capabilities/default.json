@@ -4,7 +4,8 @@
     "main",
     "camera",
     "controls",
-    "target"
+    "target",
+    "onboarding"
   ],
   "permissions": [
     "core:default",

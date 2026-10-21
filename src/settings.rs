@@ -67,6 +67,8 @@ pub struct Settings {
     /// Max output width of Instant videos.
     pub instant_mode_max_resolution: u32,
     pub hotkeys: BTreeMap<String, Hotkey>,
+    /// First-run permission onboarding finished (macOS only).
+    pub onboarding_done: bool,
 }
 
 impl Default for Settings {
@@ -85,6 +87,7 @@ impl Default for Settings {
             studio_recording_quality: "balanced".into(),
             instant_mode_max_resolution: 1920,
             hotkeys: BTreeMap::new(),
+            onboarding_done: false,
         }
     }
 }

@@ -41,7 +41,7 @@ impl Default for CameraStyle {
 }
 
 #[derive(Default)]
-struct RecState {
+pub struct RecState {
     frame: CameraFrame,
     preview: Mutex<Option<CameraPreview>>,
     meter: Mutex<Option<MicMeter>>,
@@ -579,7 +579,7 @@ fn get_settings(st: State<RecState>) -> Settings {
 
 /// Merges `patch` into the settings, saves them and tells every window.
 #[tauri::command]
-fn set_settings(app: AppHandle, st: State<RecState>, patch: serde_json::Value) -> CmdResult<Settings> {
+pub fn set_settings(app: AppHandle, st: State<RecState>, patch: serde_json::Value) -> CmdResult<Settings> {
     let old = current(&st);
     let new = settings::merged(&old, patch).map_err(err)?;
     if new.hotkeys != old.hotkeys {
@@ -772,6 +772,22 @@ fn overlay_window(app: &AppHandle, root: &Path) -> tauri::Result<WebviewWindow> 
     overlay(app, "recordings-overlay", &format!("overlay.html?path={path}"), w, h)?.position(sx + 20.0, sy + sh - h - 60.0).focused(false).build()
 }
 
+/// The recorder window, created on first use.
+pub fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(w) = app.get_webview_window("main") {
+        return Ok(w);
+    }
+    let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("recorder.html".into()))
+        .title("Precap")
+        .inner_size(330.0, 395.0)
+        .resizable(false)
+        .maximizable(false)
+        .theme(Some(tauri::Theme::Dark));
+    #[cfg(target_os = "macos")]
+    let main = main.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    main.build()
+}
+
 pub fn run() -> anyhow::Result<()> {
     tauri::Builder::default()
         .manage(RecState { mode: Mutex::new("studio".into()), ..Default::default() })
@@ -824,7 +840,13 @@ pub fn run() -> anyhow::Result<()> {
             export_video,
             reveal,
             close_overlay,
-            log
+            log,
+            crate::permissions::permission_status,
+            crate::permissions::permission_request,
+            crate::permissions::open_permission_pane,
+            crate::permissions::relaunch_app,
+            crate::permissions::open_onboarding,
+            crate::permissions::finish_onboarding
         ])
         .setup(|app| {
             let s = settings::load(&app.path().app_data_dir()?);
@@ -832,15 +854,9 @@ pub fn run() -> anyhow::Result<()> {
             if let Err(e) = register_hotkeys(app.handle(), &s.hotkeys) {
                 eprintln!("shortcuts: {e}");
             }
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("recorder.html".into()))
-                .title("Precap")
-                .inner_size(330.0, 395.0)
-                .resizable(false)
-                .maximizable(false)
-                .theme(Some(tauri::Theme::Dark));
-            #[cfg(target_os = "macos")]
-            let main = main.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-            main.build()?;
+            if !crate::permissions::startup(app.handle(), &s)? {
+                main_window(app.handle())?;
+            }
             Ok(())
         })
         .build(crate::editor::context())?

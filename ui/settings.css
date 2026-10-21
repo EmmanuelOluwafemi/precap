@@ -76,3 +76,12 @@ button:hover>.kb kbd{border-color:var(--g8);background:var(--g7)}
 .capping button{display:flex;color:var(--g12)}.capping button:hover{color:var(--g10)}.capping button.cx{color:#ef4444}.capping button.cx:hover{color:#b91c1c}
 .capping svg{width:20px;height:20px}
 .menu{max-height:60vh;overflow-y:auto}
+/* Onboarding window (onboarding.html) */
+body.ob #app{flex-direction:column;padding:44px 20px 20px;gap:14px;background:#111111f0}
+.ob h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
+.ob .sc-card{flex:none}.ob .sr .rl{display:flex;gap:6px;align-items:center}
+.ob .tag{font-size:10px;padding:1px 6px;border-radius:99px;background:#ffffff14;color:var(--g11);font-weight:500}
+.ob .st{font-size:12px;color:var(--g11)}.ob .st.ok{color:#30d158}
+.ob .rc{gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:190px}
+.ob .hint{font-size:11px;line-height:1.4;color:var(--a11);margin-top:4px}
+.ob .sp{flex:1}
