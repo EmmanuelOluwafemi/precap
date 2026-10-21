@@ -1,6 +1,6 @@
 'use strict';
 // Main recorder panel: target tiles, device rows, and in-window picker / recordings views.
-const R = { view: 'home', dev: { screens: [], cameras: [], mics: [] }, sel: [null, null, false], error: '', q: '', recs: null, shots: null, wins: null, tile: null, cameraOnlyNext: false, mode: getMode(), level: null, mtr: null, th: new Map() };
+const R = { view: 'home', dev: { screens: [], cameras: [], mics: [] }, sel: [null, null, false], error: '', q: '', recs: null, confirm: null, busy: null, shots: null, wins: null, tile: null, cameraOnlyNext: false, mode: getMode(), level: null, mtr: null, th: new Map() };
 const getDisplay = () => Math.min(parseInt(localStorage.getItem('precapDisplay') || '0', 10) || 0, Math.max(0, R.dev.screens.length - 1));
 const setDisplay = (i) => localStorage.setItem('precapDisplay', String(i));
 
@@ -173,8 +173,17 @@ function recordings(b) {
   view(b, 'Search recordings', (l) => {
     const f = (R.recs || []).filter((r) => match(r.name));
     if (!f.length) { l.append(h('div.empty', {}, R.q ? 'No matching recordings' : 'No recordings yet. Your screen recordings will appear here. Start recording to get started!')); return; }
-    for (const r of f) l.append(h('button.item', { onclick: () => invoke('open_editor', { path: r.path }).catch((e) => { R.error = String(e); render(); }) },
-      I('rec', 17), h('div.t', {}, h('b', {}, r.name), h('small', {}, new Date(r.modified * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })))));
+    const fail = (e) => { R.error = String(e); render(); };
+    const date = (r) => new Date(r.modified * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    const reload = async () => { R.recs = await invoke('recordings'); R.confirm = null; R.busy = null; render(); };
+    for (const r of f) {
+      if (!r.incomplete) { l.append(h('button.item', { onclick: () => invoke('open_editor', { path: r.path }).catch(fail) }, I('rec', 17), h('div.t', {}, h('b', {}, r.name), h('small', {}, date(r))))); continue; }
+      const sure = R.confirm === r.path, busy = R.busy === r.path;
+      l.append(h('div.item.inc', {}, I('rec', 17), h('div.t', {}, h('b', {}, 'Incomplete Recording'), h('small', {}, `${r.name} · ${date(r)}`)),
+        sure ? h('span.q', {}, 'Delete?') : null,
+        h('button.cb', { disabled: busy, onclick: () => { if (sure) { R.confirm = null; render(); } else { R.busy = r.path; R.error = ''; render(); invoke('recover_recording', { path: r.path }).then(reload, (e) => { R.busy = null; fail(e); }); } } }, sure ? 'Cancel' : busy ? 'Recovering...' : 'Recover...'),
+        h('button.cb.del', { disabled: busy, onclick: () => { if (sure) invoke('discard_recording', { path: r.path }).then(reload, (e) => { R.confirm = null; fail(e); }); else { R.confirm = r.path; render(); } } }, sure ? 'Delete' : 'Discard')));
+    }
   });
 }
 function render() {

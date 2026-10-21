@@ -23,6 +23,12 @@ pub fn write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     Ok(())
 }
 
+/// A recording folder whose project files were never finished (crash, kill, power loss);
+/// stopping writes the meta and the config last.
+pub fn incomplete(root: &Path) -> bool {
+    root.join("content/segments").is_dir() && !(root.join(META).exists() && root.join(CONFIG).exists())
+}
+
 // ---------- recording-meta.json ----------
 
 #[derive(Serialize, Deserialize, Default)]
