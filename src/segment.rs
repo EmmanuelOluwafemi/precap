@@ -180,6 +180,12 @@ mod tests {
         assert!(red(&heavy) > red(&light) && red(&light) > 0, "heavy {} vs light {}", red(&heavy), red(&light));
     }
 
+    #[test]
+    fn unknown_blur_mode_reads_as_off() {
+        let read = |s: &str| serde_json::from_str::<BlurMode>(s).unwrap();
+        assert_eq!((read("\"sparkles\""), read("\"heavy\"")), (BlurMode::Off, BlurMode::Heavy));
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     #[ignore = "runs Apple Vision"]

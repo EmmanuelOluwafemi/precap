@@ -203,11 +203,13 @@ pub struct BackgroundBlur {
 #[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum BlurMode {
-    #[default]
-    Off,
     Light,
     Heavy,
     Remove,
+    /// Also any mode a newer Cap writes that we don't know, so the project still opens.
+    #[default]
+    #[serde(other)]
+    Off,
 }
 
 impl Default for Camera {
