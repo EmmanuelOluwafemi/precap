@@ -49,24 +49,27 @@ live preview, then export a video that looks produced, not just captured.
 - A countdown, plus a warning before you record without a microphone
 - A teleprompter that stays out of the recording (macOS)
 - A floating controls bar to stop, pause, restart or delete the recording
+- Low-disk guard: won't start without room, and pauses (rather than corrupts) a recording when the disk fills up
+- Crash recovery: a recording cut off by a crash shows up as *Incomplete Recording* with **Recover...** and **Discard**
+- A first-run permissions window for screen recording, microphone, camera and accessibility (macOS)
 
 **Video editor with live preview**
 
 - Backgrounds: wallpapers, your own images, solid colours or gradients
 - Padding, rounded or squircle corners, and shadow
-- Camera bubble position, size and shape
+- Camera bubble position, size and shape, plus background blur (light or heavy) or removal (macOS, Apple Vision)
 - A smoothed cursor (spring physics) that you can resize or hide
 - Timeline: split clips, cut, change speed, add zooms by hand or automatically from your clicks;
   zooms follow the cursor
 - Mic and system-audio volume, noise reduction and loudness normalisation
 - Wide, vertical, square and classic aspect ratios
-- Undo and redo; export to MP4
+- Undo and redo; export to MP4 or GIF
 
 **Screenshot editor**
 
 - Draw, arrow, rectangle, circle and text tools, a mask that blurs or pixelates, and layers
 - Crop, aspect ratio, background, padding, rounding and shadow
-- Copy to the clipboard or save as PNG
+- Copy to the clipboard or save as PNG; choose whether a new screenshot opens the editor, goes to the clipboard, or both
 
 **Settings and shortcuts**
 
@@ -279,12 +282,11 @@ them when that's fine.
 ## Not included yet
 
 - Accounts, cloud upload and share links (Instant is local only)
-- Camera background blur
+- Camera background blur on Windows and Linux
 - Captions and transcription
 - Keyboard overlay
 - Text, mask and scene tracks in the video editor
 - Motion blur
-- GIF export
 - Multi-monitor cursor mapping
 - Prebuilt, signed downloads
 
