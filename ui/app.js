@@ -671,7 +671,7 @@ addEventListener('keydown', (e) => {
 });
 
 // ---------- export page ----------
-const E = { res: 1080, fps: 30, q: 'Maximum', path: '', running: false, done: null, err: '', prog: [0, 1], built: false };
+const E = { fmt: 'mp4', res: 1080, fps: 30, q: 'Maximum', path: '', running: false, done: null, err: '', prog: [0, 1], built: false };
 const QUALITY = { Potato: [32, 2], Web: [27, 4], Social: [23, 8], Maximum: [18, 16] }; // [crf, ~Mbps @1080p30]
 function outSize() {
   // Same math as the backend (export.rs output_size), not the preview bitmap, which is rounded at a smaller size.
@@ -682,7 +682,9 @@ function exSeg(items, cur, pick) { return seg(items, cur, pick, E.running ? 'dis
 function renderExport() {
   const ex = $('#export'); ex.innerHTML = '';
   const [w, hh] = outSize(), D = total();
-  const mb = (QUALITY[E.q][1] * (w * hh) / (1920 * 1080) * Math.pow(E.fps / 30, 0.7) * D) / 8;
+  const gif = E.fmt === 'gif';
+  // GIF: ~0.04 byte per pixel per frame (a palette per frame, so screen content is cheap but not free).
+  const mb = gif ? (0.04 * w * hh * E.fps * D) / 1e6 : (QUALITY[E.q][1] * (w * hh) / (1920 * 1080) * Math.pow(E.fps / 30, 0.7) * D) / 8;
   const hd = h('header', { 'data-tauri-drag-region': '' },
     h('button.back', { onclick: closeExport }, I('back', 16), 'Back to editor'), h('div.ttl', {}, 'Export'));
   const sec = (ic, t) => h('h4', {}, I(ic, 17), t);
@@ -690,15 +692,15 @@ function renderExport() {
   const opts = h('div#exopts', {},
     sec('upload', 'Destination'), exSeg([['file', 'File']], 'file', () => {}),
     h('input#expath', { value: E.path, disabled: E.running, spellcheck: false, oninput: (e) => (E.path = e.target.value) }),
-    sec('vid', 'Format'), exSeg([['mp4', 'MP4']], 'mp4', () => {}),
+    sec('vid', 'Format'), exSeg([['mp4', 'MP4'], ['gif', 'GIF']], E.fmt, re((v) => { E.fmt = v; E.path = E.path.replace(/(\.\w+)?$/, '.' + v); E.fps = v === 'gif' ? 15 : Math.max(E.fps, 15); })),
     sec('monitor', 'Resolution'), exSeg([[720, '720p'], [1080, '1080p'], [2160, '4K']], E.res, re((v) => (E.res = v))),
-    sec('gauge', 'Frame rate'), exSeg([[15, '15 FPS'], [30, '30 FPS'], [60, '60 FPS']], E.fps, re((v) => (E.fps = v))),
-    sec('gem', 'Quality'), exSeg(Object.keys(QUALITY).map((k) => [k, k]), E.q, re((v) => (E.q = v))),
-    h('div.cap', {}, h('span', {}, 'Smaller file'), h('span', {}, 'Larger file')));
+    sec('gauge', 'Frame rate'), exSeg((gif ? [10, 15, 30] : [15, 30, 60]).map((f) => [f, f + ' FPS']), E.fps, re((v) => (E.fps = v))),
+    ...(gif ? [] : [sec('gem', 'Quality'), exSeg(Object.keys(QUALITY).map((k) => [k, k]), E.q, re((v) => (E.q = v))),
+      h('div.cap', {}, h('span', {}, 'Smaller file'), h('span', {}, 'Larger file'))]));
   const foot = h('div#exfoot', {});
   if (E.running) {
     const p = Math.round((E.prog[0] / Math.max(1, E.prog[1])) * 100);
-    foot.append(h('div#exprog', {}, h('div', { style: 'display:flex;justify-content:space-between' }, h('span', {}, 'Exporting…'), h('span#expct', {}, p + '%')), h('div.bar', {}, h('i', { style: `width:${p}%` }))));
+    foot.append(h('div#exprog', {}, h('div', { style: 'display:flex;justify-content:space-between' }, h('span', {}, E.fmt === 'gif' ? 'Rendering GIF' : 'Exporting…'), h('span#expct', {}, p + '%')), h('div.bar', {}, h('i', { style: `width:${p}%` }))));
   } else if (E.err) foot.append(h('div#exprog.err', {}, E.err));
   else if (E.done) foot.append(h('div#exprog.ok', {}, h('span', {}, 'Exported'), h('button.btn2', { onclick: () => invoke('reveal', { path: E.done }) }, 'Show in Finder')));
   foot.append(h('button#exgo', { disabled: E.running, onclick: runExport }, I('file', 17), 'Export to File'));
