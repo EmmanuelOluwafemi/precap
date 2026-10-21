@@ -755,20 +755,59 @@ fn finish_segment(run: Running, fps: u32) -> Result<Segment> {
     let cursor = run.cursor.join().unwrap_or_default();
     project::write(&run.dir.join("cursor.json"), &cursor)?;
 
+    segment_of(&run.dir, &run.rel, fps, &|f| names.contains(&f))
+}
+
+/// Probes the tracks `has` reports in a segment folder; shared by the stop path and `recover`.
+fn segment_of(dir: &Path, rel: &str, fps: u32, has: &dyn Fn(&str) -> bool) -> Result<Segment> {
     let track = |file: &str, fps: Option<f64>| -> Result<Option<Track>> {
-        if !names.contains(&file) {
+        if !has(file) {
             return Ok(None);
         }
-        let start_time = probe(&run.dir.join(file), "start_time")?;
-        Ok(Some(Track { path: format!("{}/{file}", run.rel), fps, start_time }))
+        let start_time = probe(&dir.join(file), "start_time")?;
+        Ok(Some(Track { path: format!("{rel}/{file}"), fps, start_time }))
     };
     Ok(Segment {
         display: track("display.mkv", Some(fps as f64))?.context("display track missing")?,
         camera: track("camera.mkv", Some(30.0))?,
         mic: track("audio-input.mka", None)?,
         system_audio: track("system_audio.mka", None)?,
-        cursor: Some(format!("{}/cursor.json", run.rel)),
+        cursor: Some(format!("{rel}/cursor.json")),
     })
+}
+
+/// Rebuilds the project of a recording that never finished from the Matroska tracks it left.
+/// Nothing is written until every segment is probed, so a failure leaves the folder as it was.
+pub fn recover(root: &Path) -> Result<()> {
+    let segs = root.join("content/segments");
+    let mut dirs: Vec<(usize, PathBuf)> = std::fs::read_dir(&segs)
+        .with_context(|| format!("reading {}", segs.display()))?
+        .flatten()
+        .filter_map(|e| Some((e.file_name().to_str()?.strip_prefix("segment-")?.parse().ok()?, e.path())))
+        .collect();
+    dirs.sort();
+    let mut meta = Meta { pretty_name: root.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), ..Default::default() };
+    let mut why = String::from("no segments found");
+    for (i, dir) in dirs {
+        // A track cut off before its first packet cannot be probed; drop it rather than the segment.
+        let has = |f: &str| probe(&dir.join(f), "start_time").is_ok();
+        // The cursor log is only written when a segment finishes; a crashed one has none.
+        match segment_of(&dir, &format!("content/segments/segment-{i}"), 30, &has) {
+            Ok(mut seg) => {
+                if !dir.join("cursor.json").exists() {
+                    seg.cursor = None;
+                }
+                meta.segments.push(seg)
+            }
+            Err(e) => why = format!("{e:#}"),
+        }
+    }
+    if meta.segments.is_empty() {
+        bail!("no playable display track ({why})");
+    }
+    let cfg = project::load_config(root, &meta)?;
+    project::write(&root.join(project::META), &meta)?;
+    project::write(&root.join(project::CONFIG), &cfg)
 }
 
 /// A recording in progress. Pausing closes the current segment; resuming starts the next.
@@ -786,6 +825,10 @@ impl Recorder {
         let current = Some(start_segment(root, 0, &src, preview.as_ref())?);
         let meta = Meta { pretty_name: name.into(), ..Default::default() };
         Ok(Self { root: root.to_path_buf(), src, meta, current, preview })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn is_paused(&self) -> bool {
@@ -982,5 +1025,57 @@ mod tests {
         let linux = "Auto-detected sources for pulse:\n* alsa_input.pci.analog-stereo [Built-in Audio]\n  alsa_output.pci.monitor [Monitor of Built-in]\n";
         let srcs = parse_sources(linux);
         assert_eq!((srcs.len(), srcs[0].id.as_str(), srcs[0].name.as_str()), (2, "alsa_input.pci.analog-stereo", "Built-in Audio"));
+    }
+
+    fn clip(path: &Path, args: &str) {
+        let mut a: Vec<String> = ["-v", "error", "-y"].map(String::from).to_vec();
+        a.extend(args.split(' ').map(String::from));
+        a.push(path.display().to_string());
+        assert!(Command::new("ffmpeg").args(a).status().unwrap().success());
+    }
+
+    /// A folder with only segment tracks (no meta/config/cursor log), as a crash leaves it.
+    fn interrupted(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("precap {name} {}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for i in 0..2 {
+            std::fs::create_dir_all(root.join(format!("content/segments/segment-{i}"))).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn recovers_interrupted_recording() {
+        let root = interrupted("recover");
+        let seg = |i: usize, f: &str| root.join(format!("content/segments/segment-{i}")).join(f);
+        assert!(project::incomplete(&root));
+        clip(&seg(0, "display.mkv"), "-f lavfi -i testsrc=s=320x240:r=30:d=2 -c:v libx264 -pix_fmt yuv420p");
+        clip(&seg(0, "audio-input.mka"), "-f lavfi -i sine=f=440:d=2 -c:a aac");
+        clip(&seg(1, "display.mkv"), "-f lavfi -i testsrc=s=320x240:r=30:d=1 -c:v libx264 -pix_fmt yuv420p");
+        std::fs::write(seg(1, "camera.mkv"), b"cut off before any packet").unwrap();
+        recover(&root).unwrap();
+        assert!(!project::incomplete(&root));
+        let meta: Meta = project::read(&root.join(project::META)).unwrap();
+        assert_eq!(meta.segments.len(), 2);
+        assert!(meta.segments[0].mic.is_some() && meta.segments[0].cursor.is_none());
+        assert!(meta.segments[1].camera.is_none(), "unreadable optional track is dropped");
+        let cfg: project::Config = project::read(&root.join(project::CONFIG)).unwrap();
+        let d: Vec<f64> = cfg.timeline.segments.iter().map(|c| c.end).collect();
+        assert!((d[0] - 2.0).abs() < 0.2 && (d[1] - 1.0).abs() < 0.2, "{d:?}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn recovery_without_display_leaves_files_alone() {
+        let root = interrupted("norecover");
+        let audio = root.join("content/segments/segment-0/audio-input.mka");
+        clip(&audio, "-f lavfi -i sine=f=440:d=1 -c:a aac");
+        std::fs::write(root.join("content/segments/segment-1/display.mkv"), b"junk").unwrap();
+        let before = std::fs::read(&audio).unwrap();
+        let e = recover(&root).unwrap_err().to_string();
+        assert!(e.contains("no playable display track"), "{e}");
+        assert!(project::incomplete(&root) && !root.join(project::META).exists());
+        assert_eq!(std::fs::read(&audio).unwrap(), before);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

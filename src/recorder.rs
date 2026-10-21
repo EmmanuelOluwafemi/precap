@@ -412,20 +412,23 @@ struct RecordingItem {
     path: String,
     /// Seconds since the Unix epoch.
     modified: u64,
+    /// Left by a crash: needs `recover_recording` or `discard_recording`.
+    incomplete: bool,
 }
 
 /// Project folders under `kind` holding `marker`, newest first.
 fn list_projects(app: &AppHandle, kind: &str, marker: &str) -> CmdResult<Vec<RecordingItem>> {
+    let active = lock(&app.state::<RecState>().rec).as_ref().map(|r| r.root().to_path_buf());
     let dir = data_dir(app, kind).map_err(err)?;
     let mut items: Vec<RecordingItem> = std::fs::read_dir(&dir)
         .map(|rd| rd.flatten().collect::<Vec<_>>())
         .unwrap_or_default()
         .into_iter()
-        .filter(|e| e.path().join(marker).exists())
+        .filter(|e| e.path().join(marker).exists() || (marker == crate::project::META && crate::project::incomplete(&e.path()) && active.as_deref() != Some(&e.path())))
         .map(|e| {
             let modified = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
             let name = e.path().file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            RecordingItem { name, path: e.path().display().to_string(), modified }
+            RecordingItem { name, path: e.path().display().to_string(), modified, incomplete: marker == crate::project::META && crate::project::incomplete(&e.path()) }
         })
         .collect();
     items.sort_by(|a, b| b.modified.cmp(&a.modified));
@@ -435,6 +438,27 @@ fn list_projects(app: &AppHandle, kind: &str, marker: &str) -> CmdResult<Vec<Rec
 #[tauri::command]
 fn recordings(app: AppHandle) -> CmdResult<Vec<RecordingItem>> {
     list_projects(&app, "recordings", crate::project::META)
+}
+
+/// Only folders the list marks incomplete, and never the one being recorded.
+fn incomplete_dir(app: &AppHandle, path: &str) -> CmdResult<PathBuf> {
+    let p = PathBuf::from(path);
+    let active = lock(&app.state::<RecState>().rec).as_ref().map(|r| r.root().to_path_buf());
+    if active.as_deref() == Some(&p) || !crate::project::incomplete(&p) {
+        return Err("Not an incomplete recording".into());
+    }
+    Ok(p)
+}
+
+#[tauri::command]
+async fn recover_recording(app: AppHandle, path: String) -> CmdResult<()> {
+    let p = incomplete_dir(&app, &path)?;
+    tauri::async_runtime::spawn_blocking(move || record::recover(&p)).await.map_err(err)?.map_err(|e| format!("Recovery failed; original recording preserved: {e:#}"))
+}
+
+#[tauri::command]
+fn discard_recording(app: AppHandle, path: String) -> CmdResult<()> {
+    std::fs::remove_dir_all(incomplete_dir(&app, &path)?).map_err(err)
 }
 
 #[tauri::command]
@@ -803,6 +827,8 @@ pub fn run() -> anyhow::Result<()> {
         )
         .invoke_handler(tauri::generate_handler![
             devices,
+            recover_recording,
+            discard_recording,
             windows,
             window_thumbnail,
             set_camera,
