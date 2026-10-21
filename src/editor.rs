@@ -73,7 +73,7 @@ impl Preview {
         }
         let state = self.playhead.advance_to(&self.p, scene, frame_no);
         self.out.resize(scene.w * scene.h * 4, 0);
-        let o = self.open.as_ref().expect("opened above");
+        let o = self.open.as_mut().expect("opened above");
         o.dec.draw(&self.p, scene, &state, &mut self.out);
 
         let rgb: Vec<u8> = self.out.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect();
@@ -108,6 +108,9 @@ struct ProjectInfo {
     /// The "Default zoom amount" setting, for zooms dragged out on the timeline.
     #[serde(rename = "defaultZoomAmount")]
     default_zoom_amount: f64,
+    /// Whether this OS can separate the person from the camera background.
+    #[serde(rename = "canSegment")]
+    can_segment: bool,
 }
 
 #[tauri::command]
@@ -125,7 +128,7 @@ fn project(app: tauri::AppHandle, ed: State<Editor>) -> CmdResult<ProjectInfo> {
         .collect();
     let (source_width, source_height) = p.display_sizes[0];
     let name = if p.meta.pretty_name.is_empty() { file_stem(&ed.root) } else { p.meta.pretty_name.clone() };
-    Ok(ProjectInfo { name, path: ed.root.display().to_string(), fps: FPS, source_width, source_height, config: serde_json::to_value(&p.cfg).map_err(err)?, segments, default_zoom_amount: settings(&app).default_zoom_amount })
+    Ok(ProjectInfo { name, path: ed.root.display().to_string(), fps: FPS, source_width, source_height, config: serde_json::to_value(&p.cfg).map_err(err)?, segments, default_zoom_amount: settings(&app).default_zoom_amount, can_segment: cfg!(target_os = "macos") })
 }
 
 /// JPEG of the composited frame at `t` seconds on the output timeline.

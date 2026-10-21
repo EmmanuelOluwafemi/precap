@@ -10,6 +10,7 @@ mod record;
 mod recorder;
 mod render;
 mod screenshot;
+mod segment;
 mod settings;
 #[cfg(not(target_os = "macos"))]
 mod oswin;
