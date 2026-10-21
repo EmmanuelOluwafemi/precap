@@ -184,8 +184,15 @@ fn output_size(cfg: &Config, src_w: usize, src_h: usize, height: usize) -> (usiz
 pub enum Target {
     /// Output path, x264 CRF (lower = better quality, bigger file).
     Video(PathBuf, u8),
+    /// Silent looping GIF at the given path.
+    Gif(PathBuf),
     /// Output time in seconds, PNG path.
     Still(f64, PathBuf),
+}
+
+/// A `.gif` path means a GIF, anything else an mp4 at the given CRF.
+pub fn target(path: PathBuf, crf: u8) -> Target {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")) { Target::Gif(path) } else { Target::Video(path, crf) }
 }
 
 /// Everything fixed for one render: output size, layout, background, frames per clip.
@@ -346,7 +353,7 @@ pub fn render(p: &Project, fps: u32, height: usize, target: Target, progress: &m
     let (w, h, total) = (scene.w, scene.h, scene.total);
     let mut out = vec![0u8; w * h * 4];
     let mut playhead = Playhead::default();
-    match target {
+    let mut enc = match target {
         Target::Still(t, png) => {
             let frame_no = ((t * fps as f64) as usize).min(total - 1);
             let state = playhead.advance_to(p, &scene, frame_no);
@@ -356,27 +363,27 @@ pub fn render(p: &Project, fps: u32, height: usize, target: Target, progress: &m
             dec.draw(p, &scene, &state, &mut out);
             image::save_buffer(&png, &out, w as u32, h as u32, image::ColorType::Rgba8)?;
             println!("wrote {} ({w}x{h}, frame {frame_no} of {total})", png.display());
+            return Ok(());
         }
-        Target::Video(path, crf) => {
-            let mut enc = spawn_encoder(p, &path, &scene, crf)?;
-            let stdin = enc.stdin.as_mut().context("encoder stdin")?;
-            let mut frame_no = 0;
-            for (k, &n) in scene.frames.iter().enumerate() {
-                let mut dec = scene.open(p, k, 0, None)?;
-                for _ in 0..n {
-                    let state = playhead.advance_to(p, &scene, frame_no);
-                    dec.advance()?;
-                    dec.draw(p, &scene, &state, &mut out);
-                    stdin.write_all(&out).context("encoder stopped; see ffmpeg output above")?;
-                    frame_no += 1;
-                    progress(frame_no, total);
-                }
-            }
-            drop(enc.stdin.take());
-            if !enc.wait()?.success() {
-                bail!("ffmpeg encoder failed");
-            }
+        Target::Video(path, crf) => spawn_encoder(p, &path, &scene, crf)?,
+        Target::Gif(path) => spawn_gif_encoder(&path, &scene)?,
+    };
+    let stdin = enc.stdin.as_mut().context("encoder stdin")?;
+    let mut frame_no = 0;
+    for (k, &n) in scene.frames.iter().enumerate() {
+        let mut dec = scene.open(p, k, 0, None)?;
+        for _ in 0..n {
+            let state = playhead.advance_to(p, &scene, frame_no);
+            dec.advance()?;
+            dec.draw(p, &scene, &state, &mut out);
+            stdin.write_all(&out).context("encoder stopped; see ffmpeg output above")?;
+            frame_no += 1;
+            progress(frame_no, total);
         }
+    }
+    drop(enc.stdin.take());
+    if !enc.wait()?.success() {
+        bail!("ffmpeg encoder failed");
     }
     Ok(())
 }
@@ -459,6 +466,18 @@ fn spawn_encoder(p: &Project, out: &Path, scene: &Scene, crf: u8) -> Result<Chil
     cmd.spawn().context("failed to start ffmpeg encoder")
 }
 
+/// Raw RGBA on stdin to a looping GIF. A palette per frame (`stats_mode=single` + `new=1`) streams
+/// in flat memory; a global palette would buffer every frame until the end.
+fn spawn_gif_encoder(out: &Path, scene: &Scene) -> Result<Child> {
+    let mut cmd = Command::new("ffmpeg");
+    let size = format!("{}x{}", scene.w, scene.h);
+    cmd.args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &size, "-r", &scene.fps.to_string(), "-i", "-"])
+        .args(["-filter_complex", "[0:v]split[a][b];[a]palettegen=stats_mode=single[p];[b][p]paletteuse=new=1", "-loop", "0"])
+        .arg(out)
+        .stdin(Stdio::piped());
+    cmd.spawn().context("failed to start ffmpeg encoder")
+}
+
 /// Renders just the timeline's audio (for the editor's playback).
 pub fn render_audio(p: &Project, scene: &Scene, out: &Path) -> Result<()> {
     let mut cmd = Command::new("ffmpeg");
@@ -474,6 +493,27 @@ pub fn render_audio(p: &Project, scene: &Scene, out: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A synthetic 2 s project exports to a GIF of the requested size and the timeline's length.
+    #[test]
+    fn exports_gif() {
+        let root = std::env::temp_dir().join(format!("gif export {}", std::process::id()));
+        let seg = root.join("content/segments/segment-0");
+        std::fs::create_dir_all(&seg).unwrap();
+        let ff = Command::new("ffmpeg").args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p"]).arg(seg.join("display.mkv")).status().unwrap();
+        assert!(ff.success());
+        let meta = Meta { segments: vec![project::Segment { display: project::Track { path: "content/segments/segment-0/display.mkv".into(), fps: None, start_time: 0.0 }, camera: None, mic: None, system_audio: None, cursor: None }], ..Default::default() };
+        project::write(&root.join(project::META), &meta).unwrap();
+        let p = Project::load(&root).unwrap();
+        let out = root.join("out.gif");
+        let (w, h) = (Scene::new(&p, 15, 120, None).unwrap().w, 120);
+        render(&p, 15, 120, target(out.clone(), 20), &mut |_, _| {}).unwrap();
+        let probe = |entry: &str| String::from_utf8(Command::new("ffprobe").args(["-v", "error", "-show_entries", entry, "-of", "csv=p=0"]).arg(&out).output().unwrap().stdout).unwrap().trim().to_string();
+        assert_eq!(probe("stream=codec_name,width,height"), format!("gif,{w},{h}"));
+        let secs: f64 = probe("format=duration").parse().unwrap();
+        assert!((secs - 2.0).abs() < 0.15, "duration {secs}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn atempo_chains_below_half_speed() {

@@ -54,7 +54,7 @@ enum Cmd {
     /// Render the project (project-config.json) to an mp4
     Export {
         project: PathBuf,
-        /// [default: <project name>.mp4 in the current folder]
+        /// A .gif extension exports a GIF [default: <project name>.mp4 in the current folder]
         #[arg(long)]
         out: Option<PathBuf>,
         #[arg(long, default_value_t = 30)]
@@ -107,7 +107,7 @@ fn main() -> Result<()> {
             let out = out.unwrap_or_else(|| PathBuf::from(format!("{name}.mp4")));
             let mut last = 0;
             let p = export::Project::load(&project)?;
-            export::render(&p, fps, height, export::Target::Video(out.clone(), 20), &mut |done, total| {
+            export::render(&p, fps, height, export::target(out.clone(), 20), &mut |done, total| {
                 if done * 100 / total != last {
                     last = done * 100 / total;
                     eprint!("\rexporting {last:>3}%");

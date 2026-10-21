@@ -243,13 +243,13 @@ fn default_export_path(ed: State<Editor>) -> String {
     dir.join(format!("{name}.mp4")).display().to_string()
 }
 
-/// Renders the mp4, emitting `export-progress` events as `[done, total]`.
+/// Renders an mp4 (a gif for a .gif path), emitting `export-progress` events as `[done, total]`.
 #[tauri::command]
 async fn export(app: tauri::AppHandle, ed: State<'_, Editor>, config: Value, fps: u32, height: usize, crf: u8, path: String) -> CmdResult<String> {
     let mut p = Project::load(&ed.root).map_err(err)?;
     p.cfg = serde_json::from_value(config).map_err(err)?;
     let mut last = 0;
-    export::render(&p, fps, height, export::Target::Video(PathBuf::from(&path), crf), &mut |done, total| {
+    export::render(&p, fps, height, export::target(PathBuf::from(&path), crf), &mut |done, total| {
         if done == total || done - last >= fps as usize / 2 {
             last = done;
             let _ = app.emit("export-progress", (done, total));
